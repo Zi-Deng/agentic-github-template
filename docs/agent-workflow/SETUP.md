@@ -28,10 +28,10 @@ private repositories in Actions.
 The reviewer uses `COPILOT_GITHUB_TOKEN` when supplied, otherwise it retrieves the
 active `gh` OAuth token internally without printing it. A classic PAT is not a
 Copilot credential. An explicitly supplied fine-grained token needs **Copilot Requests**.
-Keep tokens in the environment or credential store, never `.agentic/config.json`.
+A token cannot grant model access that its account lacks. Copilot Free may offer only Auto; this workflow requires an account entitled to an explicit Claude model. You can keep `gh` authenticated as the repository owner and supply a separate eligible account’s token through `COPILOT_GITHUB_TOKEN`. Keep tokens in the environment or credential store, never `.agentic/config.json`.
 See [GitHub's Copilot authentication reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
 
-Check `codex /model` and Copilot's `/model` picker for account availability before
+Open Codex and use `/model`; also inspect Copilot's `/model` picker for account availability before
 spending on a project task. The initial names in `.agentic/config.json` are explicit
 requests, not guarantees of entitlement. Codex receives `--model gpt-6-astra` on
 every role launch; no user-wide model setting is modified. See the

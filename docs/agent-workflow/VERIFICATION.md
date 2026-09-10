@@ -67,9 +67,27 @@ The new-task command created and pushed `issue-1-live-verification` in a sibling
 worktree while main stayed clean. The initial publication included 41 tracked files,
 with no memory, runtime state or virtual environment files.
 
-Further pilot results belong on this PR and in its review record. Do not infer a
-successful model review, active branch rules or completed human merge from the initial
-CI pass alone.
+The [pilot PR #2](https://github.com/Zi-Deng/agentic-github-template/pull/2) was created
+in draft using the helper. Its hosted `quality` and `agentic-quality` checks passed.
+The effective `main` rules include PR review-thread resolution, strict required
+`quality` from GitHub Actions integration 15368, linear history, and blocks on force
+pushes/deletion. Ruleset ID: `22841485`; no bypass actors are configured.
+
+Review preparation succeeded against the exact pilot head, collecting issue/plan,
+diff, source and check evidence. Live model review **did not complete**: Copilot CLI
+rejected the configured Claude model as unavailable under the tested credentials.
+The wrapper returned nonzero, produced no `review.md`, and posted no model review.
+No automatic model substitution occurred. Account/model access is therefore an
+outstanding prerequisite, not a verified success.
+
+Protected environments `copilot-review` and `copilot-review-publish` were configured
+with maintainer approval and protected-branch deployment restrictions. Hosted model
+review remains disabled through the opt-in variable until its separate credential
+is supplied and validated. No hosted model generation or publication run is claimed.
+
+The pilot remains a draft pending eligible Claude access and the human merge decision.
+The effective branch rules and remote tree inventory were read back through GitHub;
+no private memory/runtime path appeared in the remote tree.
 
 Manual Actions review additionally requires the Copilot token, protected environments
 and opt-in variable. The workflow file alone does not establish these settings.
