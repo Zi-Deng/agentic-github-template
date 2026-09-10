@@ -1,0 +1,141 @@
+# Independent Copilot review
+
+The reviewer runs in a new Copilot CLI process and receives committed artifacts,
+not the implementation conversation. Its model-facing tools are `view`, `grep` and
+`glob`. The wrapper performs Git/GitHub operations outside that model process.
+
+## Local procedure
+
+From the clean main checkout on the default branch:
+
+```bash
+python3 scripts/agentic/review.py prepare 456 --issue 123 --plan-comment 987654321
+```
+
+The command prints a private directory under `.agentic-local/reviews/`. Use that exact
+path in the next commands:
+
+```bash
+python3 scripts/agentic/review.py run /absolute/path/printed/by/prepare
+# Read review.md and confirm its evidence before publication.
+python3 scripts/agentic/review.py publish /absolute/path/printed/by/prepare
+```
+
+`prepare` checks the plan's issue association and the current PR head/base. It fetches
+the PR and base refs, computes the merge base, collects the complete textual diff,
+issue and PR comments, inline findings, reviews, status contexts and check runs.
+Pagination covers all timeline/review/check pages. Source files are read as Git blobs.
+No PR checkout, Git filter, project hook or project command is executed.
+
+The snapshot contains an index mapping original paths to numbered `.txt` files, so
+repository agent settings, hooks and skills cannot become active configuration.
+Git symlinks and submodules are listed as omissions and never followed. Known private
+and data directories are excluded; a diff touching such paths is refused before it is
+transmitted. This path policy is a baseline, not a content-based secret detector.
+Inspect your own source and augment exclusions for a project's restricted paths.
+
+The default budgets are 300 KB of diff, 250 KB per source file, 12 MB of total text,
+15 minutes and 100 Copilot AI credits. These are operational choices, not claims
+about model capacity or price. Per-file omissions are recorded explicitly; oversized
+diffs and total snapshots fail rather than silently presenting a partial review as
+complete. Credit limits are provider controls and may overshoot by a request already
+in flight. Split broad changes before raising budgets.
+
+`run` copies the packet to a fresh workspace outside the repository, then uses fresh Copilot state, disabled hooks, no built-in MCP server, no inherited
+provider override and no permission to execute, edit or delegate. Prompt-mode memory
+and resume are not enabled. Repository policy and domain rubric come from the trusted
+main checkout and are explicitly supplied as text. The requested model is recorded;
+the template does not claim it independently attests to the provider's internal model
+identity. Inspect `usage.json` and provider session metadata when that matters.
+The tool controls follow the [Copilot CLI reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)
+and [custom agent configuration](https://docs.github.com/en/copilot/reference/custom-agents-configuration).
+
+`publish` rechecks head and base, verifies snapshot and report hashes, and creates a
+COMMENT review with an explicit `commit_id`. Repeated publication of the same report
+returns its existing review URL. Any new head/base requires a new snapshot. Findings
+do not automatically become approval, a green required check, or resolved threads.
+
+The review directory is private working state, not a cryptographic attestation against
+its own owner. Its hashes catch accidental edits. A user able to rewrite the manifest
+can rewrite the record, so GitHub permissions and human assessment remain necessary.
+
+## Why the snapshot differs from the PDF's detached checkout
+
+A detached worktree reduces branch mistakes but is not a read-only security boundary:
+an agent with shell access can still edit files, push a SHA or inspect shared credentials.
+This implementation strengthens the review boundary by exporting committed text and
+limiting tools. It also prevents a PR from installing its own reviewer hooks.
+
+For independent execution tests, a human can create a detached worktree in a suitable
+environment and run inspected commands without giving the model execution permission:
+
+```bash
+git fetch origin refs/pull/456/head
+git worktree add --detach ../PROJECT-worktrees/review-pr-456 FULL_REVIEWED_HEAD_SHA
+```
+
+Confirm the fetched SHA matches the record. Test environments write caches and may
+execute arbitrary project code; use disposable infrastructure for unfamiliar code.
+Attach command and commit evidence to the PR. The static reviewer must never describe
+those tests as having executed them itself.
+
+## Report contract
+
+| Severity | Meaning |
+| --- | --- |
+| P0 | Catastrophic, concrete merge blocker |
+| P1 | Likely major correctness or security failure in supported use |
+| P2 | Reachable edge-case defect or substantive evidence gap |
+| P3 | Minor optional improvement; suppress tooling-covered style remarks |
+
+Every finding needs **location, claim, trigger, impact, evidence and minimal fix
+direction**. Use original repository paths and line numbers from the mapped source,
+not the numbered snapshot filenames. Demonstrate the reachable code path or provide
+a reproducible test proposal. Do not invent executed commands.
+
+End with:
+
+1. Acceptance criteria verified or still unsupported.
+2. Validation independently executed, if any; the static CLI reviewer executes none.
+3. Limitations, omitted source, inaccessible artifacts and residual risks.
+
+Explicitly state when no material finding is supported. Treat uncertain concerns as
+questions, not proven defects. Check negative inputs, missing data, ties, NaNs,
+interruption, compatibility, concurrency and numerical boundaries where relevant.
+For scientific changes apply [the domain rubric](domain-review.md).
+
+## Manual Actions procedure
+
+Complete the protected-environment setup in [SETUP.md](SETUP.md#6-enable-manual-actions-review).
+Then use **Actions → manual Copilot review → Run workflow**, on the default branch.
+Select the PR, issue, plan comment ID and exact head. Choose publication only when
+you intend to post the generated report; otherwise download and inspect the artifact.
+
+```bash
+gh workflow run copilot-review.yml --ref main \
+  -f pr=456 -f issue=123 -f plan_comment=987654321 \
+  -f head_sha=FULL_CURRENT_PR_HEAD_SHA -F publish=false
+```
+
+Generation and publication are separate jobs. The model job has only read permissions;
+the publication job has PR write permission and does not run a model. Neither checks
+out or executes PR code. Same-repository PRs only are supported. Forks and non-default
+base branches need a separate reviewed isolation procedure, not a bypass flag.
+
+The workflow is deliberately opt-in and manual. It has no issue-comment trigger,
+automatic repair loop, model token on ordinary PR checks, or self-hosted runner.
+Changing the workflow or its credentials is T4 work.
+
+## Model selection and repair
+
+The initial configuration requests `claude-sonnet-5`. Choose another explicit Claude
+ID, such as an available Opus variant, only after checking account availability and
+deciding the cost is justified. Do not use `auto`, a built-in agent that silently
+selects another family, or the implementation conversation as a review session.
+Native GitHub Copilot code review is a separate service and does not let you pin this
+Claude choice; see [GitHub's code review description](https://docs.github.com/en/copilot/concepts/agents/code-review).
+
+Repair remains an Astra task on the original branch. Post a finding-by-finding
+response with commits and evidence. A third substantive round needs a concrete reason
+such as new nontrivial code or unresolved P0/P1 evidence, not indefinite automated
+back-and-forth.
