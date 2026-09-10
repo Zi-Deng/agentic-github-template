@@ -50,16 +50,26 @@ NICME tests, and not reproduction of the research findings. The working tree dif
 from HEAD, so the test result must not be attributed to HEAD `e0df0a4` alone. NICME
 itself was not edited and no GPU campaign was launched.
 
-## Live verification to record after publication
+## Live GitHub bootstrap verification
 
-The initial bootstrap must establish the following on the real repository:
+On 2026-09-10, published [Zi-Deng/agentic-github-template](https://github.com/Zi-Deng/agentic-github-template)
+as a public repository and enabled the template flag. The initial commit is
+`fc2556e19445b694b8c76f3462843587ee317fb0`.
 
-- GitHub repository created with intended owner, visibility and template flag.
-- CI runs emitted the expected check names and succeeded.
-- A real issue and plan produced an isolated worktree and draft PR.
-- Copilot authentication and the configured Claude model completed a static review.
-- A COMMENT review was published with the recorded PR head SHA.
-- The default-branch ruleset requires the observed check contexts.
+Both initial hosted workflows succeeded:
+
+- [ci / quality run](https://github.com/Zi-Deng/agentic-github-template/actions/runs/34541182069).
+- [agentic workflow tests run](https://github.com/Zi-Deng/agentic-github-template/actions/runs/34541182063).
+
+Created [pilot issue #1](https://github.com/Zi-Deng/agentic-github-template/issues/1)
+and its [designated plan comment](https://github.com/Zi-Deng/agentic-github-template/issues/1#issuecomment-5626696118).
+The new-task command created and pushed `issue-1-live-verification` in a sibling
+worktree while main stayed clean. The initial publication included 41 tracked files,
+with no memory, runtime state or virtual environment files.
+
+Further pilot results belong on this PR and in its review record. Do not infer a
+successful model review, active branch rules or completed human merge from the initial
+CI pass alone.
 
 Manual Actions review additionally requires the Copilot token, protected environments
 and opt-in variable. The workflow file alone does not establish these settings.
