@@ -1,6 +1,7 @@
 # Verification record
 
-Recorded 2026-09-10. This file distinguishes implemented behavior, tests actually
+Recorded 2026-09-10 (America/Los_Angeles; the later Actions timestamps are September 11 UTC).
+This file distinguishes implemented behavior, tests actually
 executed, and account-dependent verification. A green local suite does not establish
 that a model account or GitHub environment has been configured.
 
@@ -73,26 +74,59 @@ The effective `main` rules include PR review-thread resolution, strict required
 `quality` from GitHub Actions integration 15368, linear history, and blocks on force
 pushes/deletion. Ruleset ID: `22841485`; no bypass actors are configured.
 
-Review preparation succeeded against the exact pilot head, collecting issue/plan,
-diff, source and check evidence. Live model review **did not complete**: Copilot CLI
-rejected the configured Claude model as unavailable under the tested credentials.
-The wrapper returned nonzero, produced no `review.md`, and posted no model review.
-No automatic model substitution occurred. Account/model access is therefore an
-outstanding prerequisite, not a verified success.
+### Local review after the plan upgrade
+
+The first review attempt failed because the credential could not select the configured
+Claude model. It returned nonzero, produced no `review.md`, and posted no model review.
+After the maintainer enabled an eligible Copilot plan, the existing `gh` OAuth
+credential successfully ran the requested model, `claude-sonnet-5`. The CLI usage
+artifact also reported that model. No automatic model substitution was used.
+
+The [local COMMENT review](https://github.com/Zi-Deng/agentic-github-template/pull/2#pullrequestreview-5173711278)
+was published against `bd322735cc4c3140aae7ffe7264548e4a962e12b`, with base
+`fc2556e19445b694b8c76f3462843587ee317fb0`. It reported no P0/P1/P2 findings but
+inspected only part of the supplied evidence. Its optional observations and
+limitations remain in the report; this is a static review, not human approval.
+
+### Hosted generation and artifact verification
 
 Protected environments `copilot-review` and `copilot-review-publish` were configured
-with maintainer approval and protected-branch deployment restrictions. Hosted model
-review remains disabled through the opt-in variable until its separate credential
-is supplied and validated. No hosted model generation or publication run is claimed.
+with maintainer approval and protected-branch deployment restrictions. The maintainer
+stored a fine-grained Copilot Requests token, the opt-in variable was enabled, and
+the first run paused until the maintainer approved `copilot-review`.
 
-The pilot remains a draft pending eligible Claude access and the human merge decision.
+[Actions run 34548086695](https://github.com/Zi-Deng/agentic-github-template/actions/runs/34548086695)
+then succeeded: pinned CLI installation, packet preparation, Claude generation and
+artifact upload all passed. It used trusted control code from the initial main
+commit and reviewed head `bd322735cc4c3140aae7ffe7264548e4a962e12b`. The downloaded
+artifact's packet and report hashes were verified locally; its requested and
+CLI-reported model were both `claude-sonnet-5`.
+
+That run used `publish=false`, so the separate Actions publication job was correctly
+skipped. After inspection, the downloaded report was published using the local
+wrapper as a [SHA-bound COMMENT review](https://github.com/Zi-Deng/agentic-github-template/pull/2#pullrequestreview-5173913692).
+This verifies hosted generation and local publication of its artifact. It does not
+claim that the separate Actions publication job has been exercised.
+
+The hosted report identified the obsolete statement that Claude access remained
+blocked. This follow-up record fixes that P2 documentation finding. It also clarifies
+the two credential identities in the setup guide. The report's claim that check-run
+evidence was absent is inaccurate: the downloaded `context.json` contains successful
+`quality` and two `agentic-quality` runs plus the preceding local review. The reviewer
+disclosed incomplete inspection of those arrays. Branch-rule read-back remains an
+operator verification, since the packet does not include the ruleset object.
+
+### Remaining acceptance boundary
+
+Account access and hosted inference are now verified. The pilot remains subject to
+review of its latest head, maintainer assessment and a human merge decision. Each
+review above is evidence for its recorded commit, not for later documentation edits.
 The effective branch rules and remote tree inventory were read back through GitHub;
 no private memory/runtime path appeared in the remote tree.
 
-Manual Actions review additionally requires the Copilot token, protected environments
-and opt-in variable. The workflow file alone does not establish these settings.
-Final merge remains the maintainer's action; local regression tests cover cleanup
-without requiring an unattended production merge.
+Future adopters must configure their own token, protected environments and opt-in
+variable. This repository's settings are not copied by GitHub's template mechanism.
+Local regression tests cover cleanup without an unattended production merge.
 
 ## Limits
 
