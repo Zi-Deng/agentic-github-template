@@ -28,7 +28,15 @@ private repositories in Actions.
 The reviewer uses `COPILOT_GITHUB_TOKEN` when supplied, otherwise it retrieves the
 active `gh` OAuth token internally without printing it. A classic PAT is not a
 Copilot credential. An explicitly supplied fine-grained token needs **Copilot Requests**.
-A token cannot grant model access that its account lacks. Copilot Free may offer only Auto; this workflow requires an account entitled to an explicit Claude model. You can keep `gh` authenticated as the repository owner and supply a separate eligible account’s token through `COPILOT_GITHUB_TOKEN`. Keep tokens in the environment or credential store, never `.agentic/config.json`.
+A token cannot grant model access that its account lacks. This workflow requires
+an account entitled to an explicit Claude model. GitHub's
+[current plan comparison](https://docs.github.com/en/copilot/get-started/plans)
+lists Free and Student as Auto-only. Verify model access before buying or changing
+a plan. You can keep `gh` authenticated as the repository owner and supply your
+eligible Copilot account's token through `COPILOT_GITHUB_TOKEN`. The model account
+supplies inference access; the publishing credential determines the GitHub review's
+author. Record that distinction when different accounts are deliberately used.
+Keep tokens in the environment or credential store, never `.agentic/config.json`.
 See [GitHub's Copilot authentication reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
 
 Open Codex and use `/model`; also inspect Copilot's `/model` picker for account availability before
@@ -142,6 +150,43 @@ branch, and add required reviewers when your plan supports them. Store a fine-gr
 Copilot token in that environment as `COPILOT_REVIEW_TOKEN`. Create
 `copilot-review-publish` for the separate publication job and configure its reviewers.
 Only then set repository variable `AGENTIC_COPILOT_ACTIONS_ENABLED=true`.
+
+### Create and store the reviewer credential
+
+1. Open the [fine-grained token form](https://github.com/settings/personal-access-tokens/new)
+   while signed into the personal account with eligible Copilot access.
+2. Set **Resource owner** to that personal account and choose an expiration date.
+3. For this inference-only token, select **Public repositories**. Repository API
+   access uses separate credentials in the workflow, including for private projects.
+4. In **Permissions**, select the **Account** tab beside **Repositories**, then click
+   **Add permissions**. Search for **Copilot Requests** and choose **Read-only**.
+   The token form used during this setup offered only that access level, matching
+   GitHub's [PAT setup guidance](https://github.github.com/gh-aw/reference/auth/#copilot_github_token).
+5. Leave other optional permissions unselected. **Copilot agent settings** is a
+   different repository permission and is not needed here. If the dropdown says
+   **Select repository permissions**, close it and switch to **Account** first.
+6. Generate the token and store it using the hidden terminal prompt:
+
+```bash
+gh secret set COPILOT_REVIEW_TOKEN --repo YOUR-OWNER/YOUR-REPO --env copilot-review
+```
+
+Do not paste the token into a chat, commit it, or pass its value on the command line.
+The secret authenticates model requests only. The workflow's built-in `GITHUB_TOKEN`
+handles repository reads and the separate COMMENT publication job. Token visibility
+in `gh secret list --env copilot-review` confirms storage, not successful inference;
+the first hosted run must establish that.
+
+After successful local review and secret storage, enable the manual workflow:
+
+```bash
+gh variable set AGENTIC_COPILOT_ACTIONS_ENABLED --repo YOUR-OWNER/YOUR-REPO --body true
+```
+
+Follow the [manual review procedure](REVIEW.md#manual-actions-procedure). If the run
+waits for environment approval, open its Actions page, choose **Review deployments**,
+select **copilot-review**, and choose **Approve and deploy**. This is the configured
+maintainer gate, not a token failure. An enabled publication job has a separate gate.
 
 The manual workflow requires PR number, issue number, approved-plan comment ID and
 the exact head SHA. It uses a trusted default-branch checkout, builds a text snapshot,
