@@ -1,5 +1,6 @@
 """Human finishing is exercised only against temporary Git and mocked GitHub."""
 
+import copy
 import json
 import subprocess
 from pathlib import Path
@@ -20,6 +21,7 @@ class FinishTests(PipelineFixture):
     def setUp(self):
         super().setUp()
         git(self.task_path, "push", "origin", "HEAD:issue-12-correct-value")
+        self.record_completed_executor()
         self.queued = False
         self.threads = []
         self.merge_calls = []
@@ -35,6 +37,32 @@ class FinishTests(PipelineFixture):
             pipeline.review_task(self.repo, 12, execute=True, publish=True)
         self.assessment_file = self.parent / "assessment.json"
         self.assess()
+
+    def record_completed_executor(self, role="implement"):
+        # Model-double state in this disposable fixture only; no live executor ran.
+        store = tasks.TaskStore(self.repo)
+        with store.locked("issue-12") as state:
+            executor = state.setdefault(
+                "executor", {"uuid": "12345678-1234-4234-8234-123456789abc", "runs": []}
+            )
+            executor["runs"].append(
+                {
+                    "role": role,
+                    "status": "completed",
+                    "incomplete": False,
+                    "contract_digest": tasks.digest(state["approval"]["contract"]),
+                    "head_before": self.head,
+                    "head_after": self.head,
+                    "returncode": 0,
+                    "result": {
+                        "status": "completed",
+                        "summary": "Completed executor model double",
+                        "checks": ["Disposable fixture evidence only"],
+                        "blockers": [],
+                    },
+                }
+            )
+            store.save(state)
 
     def server(self, repo, number):
         return {
@@ -116,6 +144,54 @@ class FinishTests(PipelineFixture):
         self.assertTrue((self.task_path / "valuable.cache").exists())
         self.assertFalse(self.pr_data["merged"])
 
+    def test_finish_requires_executor_and_recorded_runs(self):
+        store = tasks.TaskStore(self.repo)
+        identity = store.read("issue-12")["executor"]["uuid"]
+        for executor in (None, {"uuid": identity}, {"uuid": identity, "runs": []}):
+            with self.subTest(executor=executor):
+                with store.locked("issue-12") as state:
+                    if executor is None:
+                        state.pop("executor")
+                    else:
+                        state["executor"] = executor
+                    store.save(state)
+                with self.assertRaises(workflow.WorkflowError):
+                    self.prepare()
+                self.assertNotIn("finish", store.read("issue-12"))
+
+    def test_finish_rejects_missing_or_invalid_executor_uuid(self):
+        store = tasks.TaskStore(self.repo)
+        for identity in (None, "", "not-a-uuid"):
+            with self.subTest(identity=identity):
+                with store.locked("issue-12") as state:
+                    state["executor"]["uuid"] = identity
+                    store.save(state)
+                with self.assertRaisesRegex(workflow.WorkflowError, "UUID"):
+                    self.prepare()
+                self.assertNotIn("finish", store.read("issue-12"))
+
+    def test_last_executor_run_must_be_completed_for_current_contract(self):
+        store = tasks.TaskStore(self.repo)
+        completed = store.read("issue-12")["executor"]["runs"][-1]
+        variants = [
+            {**completed, "status": status}
+            for status in ("checkpoint", "blocked", "failed", "interrupted", "running")
+        ]
+        variants += [
+            {key: value for key, value in completed.items() if key != "status"},
+            {**completed, "incomplete": True},
+            {**completed, "contract_digest": "0" * 64},
+        ]
+        for last in variants:
+            with self.subTest(status=last.get("status"), incomplete=last.get("incomplete")):
+                with store.locked("issue-12") as state:
+                    # An earlier completed phase cannot excuse a later incomplete one.
+                    state["executor"]["runs"] = [copy.deepcopy(completed), copy.deepcopy(last)]
+                    store.save(state)
+                with self.assertRaisesRegex(workflow.WorkflowError, "incomplete for this contract"):
+                    self.prepare()
+                self.assertNotIn("finish", store.read("issue-12"))
+
     def test_later_feedback_requires_reassessment_before_merge(self):
         self.prepare()
         self.conversation.append({"id": 8000, "body": "New material evidence"})
@@ -183,6 +259,46 @@ class FinishTests(PipelineFixture):
         repeated = self.human("queued")
         self.assertTrue(repeated["incomplete"])
         self.assertEqual(len(self.merge_calls), 1)
+
+    def test_publication_clears_queued_finish_and_allows_current_reassessment(self):
+        self.prepare()
+        self.assertTrue(self.human("queued")["incomplete"])
+        store = tasks.TaskStore(self.repo)
+        self.assertEqual(store.read("issue-12")["finish"]["status"], "queued")
+        self.queued = False  # GitHub double reports that the queue rejected the request.
+        previous_head = self.head
+        with (self.task_path / "code.py").open("a") as stream:
+            stream.write("# Updated fixture evidence after queue rejection.\n")
+        git(self.task_path, "add", "code.py")
+        git(self.task_path, "commit", "-m", "fixture queue recovery")
+        self.head = git(self.task_path, "rev-parse", "HEAD")
+        self.assertNotEqual(self.head, previous_head)
+        self.pr_data["head"]["sha"] = self.head
+        body = self.parent / "updated-pr.md"
+        body.write_text("Updated fixture evidence.\n\nFixes #12\n")
+
+        published = pipeline.publish_pr(self.repo, 12, "Updated fixture evidence", body)
+        self.assertEqual(published["head_sha"], self.head)
+        self.assertNotIn("finish", store.read("issue-12"))
+        self.assertEqual(
+            git(self.root, "ls-remote", "--heads", "origin", "issue-12-correct-value").split()[0],
+            self.head,
+        )
+        with self.assertRaisesRegex(workflow.WorkflowError, "stale"):
+            self.prepare()
+
+        # Complete the normal prerequisites using disposable executor/reviewer doubles.
+        self.record_completed_executor(role="repair")
+        git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
+        with patch.object(review, "review", side_effect=self.model_double):
+            pipeline.review_task(self.repo, 12, execute=True, publish=True)
+        self.assess()
+        prepared = self.prepare()
+        self.assertTrue(prepared["qualified"])
+        self.assertEqual(prepared["head_sha"], self.head)
+        self.assertEqual(store.read("issue-12")["finish"]["status"], "prepared")
+        self.assertEqual(len(self.merge_calls), 1)
+        self.assertTrue(self.task_path.exists())
 
     def test_merge_error_is_requeried_and_closed_issue_does_not_block_cleanup(self):
         (self.task_path / "valuable.cache").write_text("result")

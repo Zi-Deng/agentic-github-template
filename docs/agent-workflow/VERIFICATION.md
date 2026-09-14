@@ -139,7 +139,7 @@ control clone and a registered sibling issue worktree. Neither adoption target w
 
 ### Evidence obtained during implementation
 
-- **94 regression tests passed** in the full local gate. The suite uses real temporary
+- **98 regression tests passed** in the full local gate. The suite uses real temporary
   Git repositories and local processes, with mocked GitHub/model services. It covers
   publication reconciliation, approval invalidation, exact-UUID repair with all feedback
   surfaces, stale review rejection, bounded process termination, queued/failed merges,
@@ -180,6 +180,15 @@ regression reproduced the failure using the reviewed head's `stop_process` funct
 the repaired function passes it. Another regression confirms truncated JSON records
 an incomplete failure and preserves the original UUID for resumption. The reviewer
 executed no tests; those results come from coordinator-run local validation.
+
+The [second Fable review](https://github.com/Zi-Deng/agentic-github-template/pull/6#pullrequestreview-5203073695)
+also exhausted its session budget and did not confirm complete acceptance coverage.
+Its missing-executor question led to a confirmed completion-gate fix: managed finish
+requires a valid original UUID and an explicitly completed latest run for the current
+contract. The rejection regression fails against the reviewed function and passes
+after repair. A further regression demonstrates recovery through normal publication,
+completion and renewed review after a merge queue rejects a task. The latest repair
+requires fresh independent review; no third round was run without explicit continuation.
 
 Local validation uses a separate environment built from system CPython 3.12.3 with
 the repository's pinned Ruff 0.16.7 and PyYAML 6.0.3. The previously reused ML environment

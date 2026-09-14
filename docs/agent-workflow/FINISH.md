@@ -87,7 +87,9 @@ python3 scripts/agentic/workflow.py finish-prepare 123 \
 The result includes PR/review links, exact head/base, inventory, reserved archive
 destination, working directory, and the human command. Preparation does not move task
 artifacts. Changed PR text or feedback requires reassessment; changed head/base also
-requires a new independent review. An incomplete executor phase blocks readiness. A
+requires a new independent review. Readiness requires the saved original executor UUID
+and a latest recorded run that completed the current contract. A recovered UUID without
+a completed run, an absent run history, or an incomplete phase cannot qualify. A
 `checkpoint` result permits early draft publication, then requires continued
 implementation in the same UUID.
 

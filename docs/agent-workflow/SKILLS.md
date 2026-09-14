@@ -85,6 +85,11 @@ change the active model of an arbitrary host conversation; use Astra for coordin
 and the explicit managed launcher for implementation. Cheaper-model changes require
 a separate deliberate policy decision.
 
+The managed launcher and review coordinator explicitly enforce the selected Astra/Fable
+policy. A deliberate model change must update those policy guards and their validation
+along with configuration and role guidance; editing a model ID alone is insufficient
+for the managed path.
+
 The managed executor implements the approved scope, runs checks, prepares commits and
 returns publication text. The coordinator checks actual Git state and performs GitHub
 writes. The managed role prompt takes precedence over the generic interactive role

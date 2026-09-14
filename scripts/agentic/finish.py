@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 import archives
 import pipeline
+from sessions import session_uuid
 from tasks import TaskStore, digest, plain_path
 from workflow import Repo, WorkflowError, cleanup_task, configuration, positive, run, sha
 
@@ -207,9 +208,17 @@ def validate_assessment(repo, state, assessment):
             )
             if follow_up.get("state") != "open" or "pull_request" in follow_up:
                 raise WorkflowError("Deferred finding must reference an open follow-up issue")
-    runs = state.get("executor", {}).get("runs", [])
-    if runs and (
-        runs[-1].get("incomplete", True)
+    executor = state.get("executor")
+    if not isinstance(executor, dict):
+        raise WorkflowError("Finish requires the saved original executor UUID and a completed phase")
+    session_uuid(executor.get("uuid"))
+    runs = executor.get("runs")
+    if (
+        not isinstance(runs, list)
+        or not runs
+        or not isinstance(runs[-1], dict)
+        or runs[-1].get("status") != "completed"
+        or runs[-1].get("incomplete") is not False
         or runs[-1].get("contract_digest") != digest(state["approval"]["contract"])
     ):
         raise WorkflowError("Executor phase remains incomplete for this contract")
