@@ -214,12 +214,14 @@ def new_task(repo, number, slug, base=None):
         return {"issue": number, "branch": branch, "worktree": str(path), "base": base}
 
 
-def cleanup_task(repo, number):
+def cleanup_task(repo, number, expected_sha=None):
     with repo.lock():
         repo.assert_main()
         pr = repo.pr(number)
         branch = pr["head"]["ref"]
         tip = sha(pr["head"]["sha"])
+        if expected_sha is not None and tip != sha(expected_sha):
+            raise WorkflowError("Merged PR head differs from the pinned cleanup head")
         if not pr.get("merged"):
             raise WorkflowError("Cleanup requires a verified MERGED pull request")
         if not pr["head"].get("repo") or pr["head"]["repo"]["full_name"] != repo.name:
@@ -257,6 +259,8 @@ def cleanup_task(repo, number):
 
 
 def draft_pr(repo, title, body):
+    if os.environ.get("AGENTIC_EXECUTOR_ROLE"):
+        raise WorkflowError("Managed executors prepare PR text; the coordinator publishes it")
     branch = repo.git("branch", "--show-current")
     match = re.fullmatch(r"issue-([1-9][0-9]*)-[a-z0-9-]+", branch)
     if repo.root == repo.main or not match:
@@ -271,9 +275,25 @@ def draft_pr(repo, title, body):
             ["gh", "pr", "list", "--repo", repo.name, "--head", branch, "--state", "open", "--json", "url"]
         ).stdout
     )
-    if existing:
-        return {"existing_pr": existing[0]["url"]}
     repo.git("push", "-u", "origin", branch)
+    if existing:
+        if len(existing) != 1:
+            raise WorkflowError("Multiple open PRs match this branch")
+        run(
+            [
+                "gh",
+                "pr",
+                "edit",
+                existing[0]["url"],
+                "--repo",
+                repo.name,
+                "--title",
+                title,
+                "--body-file",
+                Path(body).resolve(),
+            ]
+        )
+        return {"existing_pr": existing[0]["url"], "updated": True}
     return {
         "pr": run(
             [
@@ -389,7 +409,13 @@ def merge_preflight(repo, number, reviewed_sha):
     }
 
 
-def launch(repo, role, task, execute=False):
+def launch(repo, role, task, execute=False, managed=False):
+    if os.environ.get("AGENTIC_EXECUTOR_ROLE"):
+        raise WorkflowError("An already-running executor must not launch another executor")
+    if managed:
+        from sessions import managed_launch
+
+        return managed_launch(repo, role, task, execute=execute)
     cfg = configuration(repo.root)
     if not re.fullmatch(r"gpt-[a-zA-Z0-9.-]+", cfg["openai_model"]):
         raise WorkflowError("Non-review roles must use an explicitly configured OpenAI GPT model")
@@ -418,8 +444,11 @@ def launch(repo, role, task, execute=False):
 
 
 def main():
+    from tasks import COMMANDS, add_commands, dispatch
+
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+    add_commands(sub)
     sub.add_parser("doctor")
     sub.add_parser("memory-init")
     new = sub.add_parser("new-task")
@@ -440,6 +469,7 @@ def main():
     agent.add_argument("role", choices=["draft", "plan", "implement", "repair"])
     agent.add_argument("task")
     agent.add_argument("--execute", action="store_true")
+    agent.add_argument("--managed", action="store_true")
     args = parser.parse_args()
     try:
         repo = Repo()
@@ -456,7 +486,9 @@ def main():
             }
             print(json.dumps(result, indent=2))
             return 0 if all(result["tools"].values()) and result["github_authenticated"] else 1
-        if args.command == "memory-init":
+        if args.command in COMMANDS:
+            result = dispatch(repo, args)
+        elif args.command == "memory-init":
             if repo.git("ls-files", "memory"):
                 raise WorkflowError("memory is already tracked; ignoring it cannot remove it from history")
             ignored = run(["git", "-C", repo.root, "check-ignore", "memory/probe.md"], check=False)
@@ -480,15 +512,17 @@ def main():
         elif args.command == "merge-preflight":
             result = merge_preflight(repo, positive(args.pr), args.reviewed_sha)
         elif args.command == "launch":
-            result = launch(repo, args.role, args.task, args.execute)
+            result = launch(repo, args.role, args.task, args.execute, args.managed)
             if isinstance(result, int):
                 return result
         print(json.dumps(result, indent=2))
-        return 0
+        return 1 if isinstance(result, dict) and result.get("incomplete") else 0
     except (WorkflowError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":
+    # Helpers must share this module's exception class and low-level interfaces.
+    sys.modules["workflow"] = sys.modules[__name__]
     sys.exit(main())

@@ -97,7 +97,101 @@ for every round. Its selected model is `claude-fable-5`; its available tools are
 It receives neither the Astra conversation nor private task memory. Read
 [REVIEW.md](REVIEW.md) for the exact isolation boundary and evidence limitations.
 
+## Commands behind capture, planning and preparation
+
+The skills use the public GitHub CLI credentials already configured for the project.
+Run these coordinator commands from the clean control checkout, replacing example
+identifiers and body files with the actual task artifacts:
+
+```bash
+python3 scripts/agentic/workflow.py capture --key export-validation \
+  --title "Validate export configuration" --body-file /tmp/issue.md
+python3 scripts/agentic/workflow.py plan 123 --body-file /tmp/plan.md
+python3 scripts/agentic/workflow.py approve-plan 123 --plan-comment 987654321 \
+  --approval-source "Maintainer approved this concrete plan in the coordinating conversation"
+python3 scripts/agentic/workflow.py prepare 123 export-validation
+python3 scripts/agentic/workflow.py task-status 123
+```
+
+The approval command records a decision that actually occurred; its example source
+text must not be used to manufacture approval. The issue and plan digests are checked
+before subsequent work. Keep the exact plan comment ID returned by publication.
+
+Retain the capture operation key and body file for retries. Reusing a key with changed
+content is refused. If a network failure leaves a publication outcome uncertain, the
+helper looks for its saved marker before another write. When the outcome remains
+unobserved, `--retry-confirmed-absent` is an explicit operator decision after investigating
+GitHub, not an automatic retry option. Saved markers and IDs prevent ordinary duplicates;
+they are not security attestations or a guarantee of exactly-once delivery by GitHub.
+
+The prepare command can recover a matching registered worktree and reports any existing
+changes. It does not discard those changes or replace a conflicting branch/path. The
+legacy `new-task` helper remains available, but the managed path also verifies and records
+the approved contract.
+
 ## What “same executor” means
+
+After preparation, use these commands from the control checkout:
+
+```bash
+# Preview the working directory, model and exact command, then execute it.
+python3 scripts/agentic/workflow.py launch implement 123 --managed
+python3 scripts/agentic/workflow.py launch implement 123 --managed --execute
+
+# Publish a coherent committed checkpoint, or push and update the same PR.
+python3 scripts/agentic/workflow.py publish-pr 123 \
+  --title "Validate export configuration" --body-file /tmp/pr.md
+
+# If a PR already exists, bind its verified branch to the task record.
+python3 scripts/agentic/workflow.py bind-pr 123 456
+
+# Prepare a snapshot; run and publish the independent review when ready.
+python3 scripts/agentic/workflow.py task-review 123
+python3 scripts/agentic/workflow.py task-review 123 --execute --publish
+
+# Read every feedback surface, then resume the original implementation UUID.
+python3 scripts/agentic/workflow.py feedback 123
+python3 scripts/agentic/workflow.py launch repair 456 --managed --execute
+python3 scripts/agentic/workflow.py publish-pr 123 \
+  --title "Validate export configuration" --body-file /tmp/pr.md
+python3 scripts/agentic/workflow.py respond 123 --key round-one \
+  --body-file /tmp/repair-response.md
+python3 scripts/agentic/workflow.py task-review 123 --execute --publish
+```
+
+Most task commands take the **issue** number. The repair launcher takes the **PR**
+number and resolves its registered issue branch. The skill accepts a PR for review
+or finish and performs that lookup; it must not interchange the two identifiers.
+
+The review helper reuses a completed report for the same head/base when reconciling
+publication. It never silently reruns an uncertain model invocation. Use `--fresh`
+for a deliberate new attempt. A changed head/base creates a new snapshot automatically.
+After two attempted runs, a further execution needs both `--approved-continuation`
+and `--continue-reason "..."`, backed by actual user authorization. This conservative
+accounting also counts failed invocations, because they can consume credits.
+
+### Recover an interrupted executor
+
+First inspect `task-status`, the worktree, and the private execution records. If the
+saved task UUID is present and the preceding process has stopped, another managed
+launch resumes it. If the UUID was not captured, recover the original identity from
+an actual saved Codex JSONL record:
+
+```bash
+python3 scripts/agentic/workflow.py recover-executor 123 \
+  --session ORIGINAL-COMPLETE-UUID --record-file /absolute/private/session.jsonl \
+  --recovery-source "Original implementation record verified; process has stopped" \
+  --confirm-stopped
+```
+
+The command rejects a replacement for an already recorded UUID. Recovery records
+contain an operator assertion and the source-file digest; they do not cryptographically
+attest a model session. Never use a made-up session record or mark a live process stopped.
+
+If the task contract changes, publish the revised plan and obtain approval before
+using `approve-plan ... --supersede`. Superseding approval preserves the executor and
+approval history and invalidates prior readiness. It is an explicit reconciliation
+step, not a way to approve a change merely because public text requests it.
 
 A managed implementation run uses persistent `codex exec --json` execution and saves
 the UUID emitted by `thread.started`. Repair calls `codex exec resume` with that
@@ -116,6 +210,12 @@ even if its process exited successfully. Missing session data must be recovered 
 the saved execution records; do not manufacture a UUID or start a new executor under
 the old task identity. Sandbox failures must be surfaced without automatically widening
 the worker's permissions.
+
+The managed result has `status`, `summary`, `checks`, and `blockers`. A first coherent
+implementation checkpoint returns `checkpoint`, which intentionally leaves the phase
+incomplete while the coordinator publishes the early draft. After binding that PR,
+resume implementation to finish the contract. `completed` requires an unblocked result;
+the coordinator still verifies actual changes and evidence before review.
 
 ## Evidence and public repair
 

@@ -101,6 +101,7 @@ Primary sources checked for this extension:
 | What does a worktree isolate? | [Git worktree](https://git-scm.com/docs/git-worktree) | Separate checkout/index with shared repository objects and configuration |
 | How are reviewer tools limited? | [GitHub Copilot tool controls](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools) | Preserve the existing explicit available-tool set and separate publication |
 | What is pinned by the merge flag? | [GitHub CLI merge](https://cli.github.com/manual/gh_pr_merge) | Pin the head; recheck base but do not claim atomic base locking |
+| Does removing draft status merge a PR? | [GitHub CLI ready](https://cli.github.com/manual/gh_pr_ready) and installed `gh pr ready --help` | Readiness changes draft status only; merge remains the human's separate operation |
 | How can remote cleanup preserve newly pushed commits? | [Git push](https://git-scm.com/docs/git-push) | Explicit expected-SHA lease on the one task ref |
 
 These documents establish interfaces, not live model availability or proof of model

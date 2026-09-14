@@ -1,6 +1,7 @@
 # Verification record
 
-Recorded 2026-09-10 (America/Los_Angeles; the later Actions timestamps are September 11 UTC).
+Baseline recorded 2026-09-10, with the Golden Path extension recorded separately below
+on 2026-09-14 (America/Los_Angeles; linked Actions timestamps use UTC).
 This file distinguishes implemented behavior, tests actually
 executed, and account-dependent verification. A green local suite does not establish
 that a model account or GitHub environment has been configured.
@@ -127,6 +128,68 @@ no private memory/runtime path appeared in the remote tree.
 Future adopters must configure their own token, protected environments and opt-in
 variable. This repository's settings are not copied by GitHub's template mechanism.
 Local regression tests cover cleanup without an unattended production merge.
+
+## Golden Path skills extension — 2026-09-14
+
+The public contract is [issue #5](https://github.com/Zi-Deng/agentic-github-template/issues/5)
+and its [approved plan](https://github.com/Zi-Deng/agentic-github-template/issues/5#issuecomment-5669832153).
+Implementation is published in [PR #6](https://github.com/Zi-Deng/agentic-github-template/pull/6).
+The original checkout's unrelated untracked material was preserved; work used a clean
+control clone and a registered sibling issue worktree. Neither adoption target was edited.
+
+### Evidence obtained during implementation
+
+- **92 regression tests passed** in the full local gate. The suite uses real temporary
+  Git repositories and local processes, with mocked GitHub/model services. It covers
+  publication reconciliation, approval invalidation, exact-UUID repair with all feedback
+  surfaces, stale review rejection, bounded process termination, queued/failed merges,
+  archive recovery, advanced remote refs, and installer preservation. Lint, formatting,
+  workflow configuration and skill/documentation link checks passed.
+
+- All eight skill packages passed the Skill Creator metadata validator. A live Astra
+  routing probe selected the expected skill for eight phase/lifecycle requests and
+  selected none for two unrelated requests. This tested selection from the metadata
+  catalog; it did not execute ten complete workflows or prove host-wide discovery.
+- The approval helper recorded the existing human approval of the designated plan.
+  The preparation helper recovered the actual task worktree, preserved its pending
+  implementation edits, and verified its upstream. The PR binding helper associated
+  the task with the existing draft PR.
+- A disposable local Git test confirmed that an explicit stale SHA lease rejects
+  remote branch deletion and preserves the advanced tip, while a matching lease
+  permits deletion. No production branch was deleted for this test.
+- A live local archival probe moved a directory between two different filesystem
+  devices using the copy/verify path. File content and the symlink were preserved;
+  the link's external target remained untouched. Both probe directories were temporary.
+- The dedicated Astra session started in the issue worktree and subsequent authoring
+  turns resumed the same saved UUID. It produced inspectable implementation patches;
+  the coordinator applied them in that worktree and ran validation.
+- The executor recovery command imported that actual saved UUID into the task record
+  after the authoring process stopped; it retained the registered worktree identity.
+- The live GitHub queries for required checks, review-thread pagination and merge-queue
+  state succeeded against the draft PR. No merge was requested by these queries.
+
+Head-specific hosted checks and independent reviews are retained on
+[PR #6](https://github.com/Zi-Deng/agentic-github-template/pull/6). A review is evidence
+only for its recorded head/base; later commits require renewed review. Local test
+results above do not substitute for that independent model review or a human merge.
+
+Local validation uses a separate environment built from system CPython 3.12.3 with
+the repository's pinned Ruff 0.16.7 and PyYAML 6.0.3. The previously reused ML environment
+failed to import `_ctypes` because of an ABI error; it was preserved rather than modified.
+
+### Workstation execution limitation
+
+The installed Codex CLI was **0.154.0**. Its `workspace-write` sandbox failed before
+even `pwd` could execute, reporting `bwrap: loopback: Failed RTM_NEWADDR: Operation not
+permitted`. Native patch execution also failed. The legacy sandbox backend rejected
+the active permission profile. Permissions were not silently widened.
+
+Consequently, live session continuity and model-authored patch handoff are distinct
+from successful native worker command execution. The latter remains unverified on
+this workstation until its sandbox is repaired or the maintainer explicitly chooses
+an appropriate execution policy. The template keeps `workspace-write`; a failed or
+blocked managed run remains incomplete. The manual development handoff used here is
+not an automatic runtime fallback.
 
 ## Limits
 

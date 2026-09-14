@@ -71,6 +71,9 @@ class GitFixture(unittest.TestCase):
         self.environ.start()
         self.addCleanup(self.environ.stop)
         os.environ.pop("WT_ROOT", None)
+        # These fixtures simulate coordinator operations even when their caller
+        # is a managed executor. Dedicated tests explicitly restore the guard.
+        os.environ.pop("AGENTIC_EXECUTOR_ROLE", None)
 
     def api(self, suffix, *, data=None, **kwargs):
         if data is not None:
@@ -424,6 +427,30 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((target / "memory").exists())
             self.assertFalse((target / "README.md").exists())
             self.assertTrue((target / "scripts/agentic/workflow.py").exists())
+            self.assertTrue((target / "scripts/finish-task.sh").exists())
+            self.assertEqual(len(list((target / ".agents/skills").glob("*/SKILL.md"))), 8)
+            self.assertFalse((target / ".agentic-local").exists())
+
+    def test_installer_rejects_non_directory_ancestor_before_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "new"
+            target.mkdir()
+            (target / "scripts").write_text("existing user file")
+            with self.assertRaisesRegex(workflow.WorkflowError, "before any writes"):
+                install.install(SOURCE, target, True)
+            self.assertFalse((target / ".agentic").exists())
+            self.assertEqual((target / "scripts").read_text(), "existing user file")
+
+    def test_installer_preserves_unrecognized_origin_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "new"
+            (target / ".agentic").mkdir(parents=True)
+            manifest = target / ".agentic/template-origin.json"
+            manifest.write_text('{"private_user_record": true}')
+            with self.assertRaisesRegex(workflow.WorkflowError, "before any writes"):
+                install.install(SOURCE, target, True)
+            self.assertFalse((target / "scripts").exists())
+            self.assertEqual(json.loads(manifest.read_text()), {"private_user_record": True})
 
 
 if __name__ == "__main__":

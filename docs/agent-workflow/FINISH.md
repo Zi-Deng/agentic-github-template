@@ -21,6 +21,76 @@ and the coordinator supplies the exact `scripts/finish-task.sh` command with its
 recorded inputs. Copy that command rather than obtaining a new head SHA and assuming
 it was reviewed.
 
+Marking ready uses [GitHub CLI's ready operation](https://cli.github.com/manual/gh_pr_ready).
+It changes draft status; it does not submit an approval or merge the PR.
+
+## Prepare the assessment
+
+Collect the current evidence identifiers from the clean control checkout:
+
+```bash
+python3 scripts/agentic/workflow.py feedback 123 > /tmp/issue-123-feedback.json
+```
+
+Read the complete feedback and approved contract. Write an assessment JSON file using
+this structure, replacing the example values with actual evidence:
+
+```json
+{
+  "head_sha": "FULL_REVIEWED_HEAD_SHA",
+  "base_sha": "FULL_REVIEWED_BASE_SHA",
+  "review_id": 123456789,
+  "feedback_digest": "DIGEST_FROM_FEEDBACK",
+  "pr_digest": "DIGEST_FROM_FEEDBACK",
+  "summary": "Assessment of all criteria and material findings.",
+  "limitations": "Checks or claims outside the available evidence.",
+  "domain_evidence": "Domain validation, or why no scientific claim is involved.",
+  "acceptance": [
+    {
+      "criterion": "One measurable criterion from the approved contract",
+      "supported": true,
+      "evidence": ["https://github.com/OWNER/REPO/actions/runs/RUN"]
+    }
+  ],
+  "records": [
+    {
+      "id": "review:123456789",
+      "digest": "RECORD_DIGEST_FROM_FEEDBACK",
+      "disposition": "no-action",
+      "rationale": "Explain why this record supports no remaining material defect.",
+      "evidence": ["https://github.com/OWNER/REPO/pull/PR#pullrequestreview-123456789"]
+    }
+  ]
+}
+```
+
+Include every acceptance requirement and every published review/inline record returned
+by `feedback`, including older heads. Dispositions are `fixed`, `rebutted`, `deferred`,
+or justified `no-action`. If a review contains several findings, its rationale and linked
+public response must address each material finding. PR conversation comments are also
+read and included in the feedback digest; they have no separate review-record row.
+
+A `deferred` record also needs `follow_up`, the URL of an open GitHub issue, and
+`acceptance_source`, identifying the user's actual acceptance of that deferral. The
+helper checks that the follow-up exists and is open. The coordinator remains responsible
+for the appropriateness and authorization of deferral. Evidence arrays require public
+HTTPS links. The helper validates structure and freshness; it cannot prove the truth
+of linked evidence or the semantic completeness of an assessment.
+
+Prepare and, when qualified, mark ready:
+
+```bash
+python3 scripts/agentic/workflow.py finish-prepare 123 \
+  --assessment-file /tmp/issue-123-assessment.json --ready
+```
+
+The result includes PR/review links, exact head/base, inventory, reserved archive
+destination, working directory, and the human command. Preparation does not move task
+artifacts. Changed PR text or feedback requires reassessment; changed head/base also
+requires a new independent review. An incomplete executor phase blocks readiness. A
+`checkpoint` result permits early draft publication, then requires continued
+implementation in the same UUID.
+
 ## What the human-run script does
 
 1. Recheck the PR and the designated review against current GitHub state.
@@ -42,6 +112,13 @@ The remote deletion uses an explicit expected-SHA lease, so a background fetch c
 silently change which tip is considered safe to delete. See [Git's lease semantics](https://git-scm.com/docs/git-push).
 
 ## How ignored artifacts are preserved
+
+Automatic archival currently requires Linux and a filesystem supporting
+`renameat2(RENAME_NOREPLACE)`. The implementation stops if that atomic operation is
+unavailable; it does not substitute an overwrite-prone rename. Use a functioning
+CPython 3.12+ interpreter with its standard `ctypes` module. Other platforms can use
+the skills and ordinary GitHub phases, but need a reviewed archival adapter before
+relying on automatic finishing.
 
 Ordinary `git status` can hide virtual environments, caches, private notes, checkpoints
 and experiment outputs. The finishing script archives ignored entries under a unique

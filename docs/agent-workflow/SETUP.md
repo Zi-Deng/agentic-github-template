@@ -8,7 +8,15 @@ has completed the review loop. The same files support both paths.
 Use Python 3.12 or newer, current Git and GNU Make. Install GitHub CLI, Codex and Copilot CLI
 from their official distribution channels. This workstation was provisioned with
 GitHub CLI 2.100.0 and Copilot CLI 1.0.83 from release archives whose SHA-256 digests
-were checked against GitHub release metadata. Codex 0.146.0 was already installed.
+were checked against GitHub release metadata. The Golden Path extension was validated
+against installed Codex 0.154.0 on 2026-09-14. These are observed versions, not a
+claim that they remain the latest releases.
+
+The human finishing script currently targets Linux with atomic no-replace rename
+support. Its [archival requirements and recovery procedure](FINISH.md) are part of
+adoption. Use a healthy Python installation; `python3 -c 'import ctypes'` should
+succeed before relying on the finishing helper. Model sandbox startup must also be
+tested in the environment that will run the managed executor.
 
 ```bash
 git --version
