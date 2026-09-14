@@ -8,6 +8,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from test_workflow import workflow
 
@@ -111,6 +112,28 @@ class ProcessGroupTests(unittest.TestCase):
         self.assert_stopped(child)
         self.assertIsNone(unrelated.poll())
         self.assertTrue(self.running(unrelated_child))
+
+    def test_leader_exit_between_group_and_session_lookup_still_escalates(self):
+        process, child = self.spawn(leader_stays=True, child_ignores_term=True)
+
+        def lose_leader(pid):
+            self.assertEqual(pid, process.pid)
+            process.kill()
+            process.wait(timeout=5)
+            raise ProcessLookupError("Fixture leader exited between ownership lookups")
+
+        started = time.monotonic()
+        with (
+            patch.object(sessions.os, "getsid", side_effect=lose_leader) as lookup,
+            patch.object(sessions.os, "killpg", wraps=os.killpg) as group_signal,
+        ):
+            sessions.stop_process(process)
+        self.assertLess(time.monotonic() - started, 8)
+        lookup.assert_called_once_with(process.pid)
+        group_signal.assert_any_call(process.pid, signal.SIGTERM)
+        group_signal.assert_any_call(process.pid, signal.SIGKILL)
+        self.assertTrue(all(call.args[0] == process.pid for call in group_signal.call_args_list))
+        self.assert_stopped(child)
 
     def test_process_outside_a_dedicated_session_is_refused(self):
         process = subprocess.Popen(

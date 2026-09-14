@@ -139,7 +139,7 @@ control clone and a registered sibling issue worktree. Neither adoption target w
 
 ### Evidence obtained during implementation
 
-- **92 regression tests passed** in the full local gate. The suite uses real temporary
+- **94 regression tests passed** in the full local gate. The suite uses real temporary
   Git repositories and local processes, with mocked GitHub/model services. It covers
   publication reconciliation, approval invalidation, exact-UUID repair with all feedback
   surfaces, stale review rejection, bounded process termination, queued/failed merges,
@@ -172,6 +172,14 @@ Head-specific hosted checks and independent reviews are retained on
 [PR #6](https://github.com/Zi-Deng/agentic-github-template/pull/6). A review is evidence
 only for its recorded head/base; later commits require renewed review. Local test
 results above do not substitute for that independent model review or a human merge.
+
+The [first Fable review](https://github.com/Zi-Deng/agentic-github-template/pull/6#pullrequestreview-5202984172)
+identified a process-group ownership lookup race and disclosed incomplete inspection
+of several helpers and tests. The original Astra session authored the repair. A
+regression reproduced the failure using the reviewed head's `stop_process` function;
+the repaired function passes it. Another regression confirms truncated JSON records
+an incomplete failure and preserves the original UUID for resumption. The reviewer
+executed no tests; those results come from coordinator-run local validation.
 
 Local validation uses a separate environment built from system CPython 3.12.3 with
 the repository's pinned Ruff 0.16.7 and PyYAML 6.0.3. The previously reused ML environment

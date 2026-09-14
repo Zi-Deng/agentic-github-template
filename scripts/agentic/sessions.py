@@ -221,12 +221,11 @@ def stop_process(process):
     def signal_group(signum):
         try:
             current_group = os.getpgid(group)
-        except ProcessLookupError:
-            # The original leader can be gone while its group still has members.
-            pass
-        else:
             if process.returncode is not None or current_group != group or os.getsid(group) != group:
                 raise WorkflowError("Process-group ownership changed; refusing to signal it")
+        except ProcessLookupError:
+            # Either lookup can lose the leader while its group still has members.
+            pass
         try:
             os.killpg(group, signum)
         except ProcessLookupError:

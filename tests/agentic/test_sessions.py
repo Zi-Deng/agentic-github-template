@@ -46,6 +46,8 @@ for event in events:
             sys.stderr.write("x" * stderr_bytes)
             sys.stderr.flush()
 result_path.write_text(json.dumps(result))
+sys.stdout.write(sys.argv[7])
+sys.stdout.flush()
 """
 
 
@@ -69,6 +71,7 @@ class SessionTests(GitFixture):
         stderr_bytes=0,
         output_budget=12_000_000,
         final_event="turn.completed",
+        trailing_stdout="",
     ):
         original_run = sessions.run
         original_popen = subprocess.Popen
@@ -105,6 +108,7 @@ class SessionTests(GitFixture):
                     json.dumps(result),
                     "yes" if verify_saved else "no",
                     str(stderr_bytes),
+                    trailing_stdout,
                 ],
                 **kwargs,
             )
@@ -257,6 +261,32 @@ class SessionTests(GitFixture):
         self.assertEqual(result["status"], "interrupted")
         self.assertTrue(result["incomplete"])
         self.assertEqual(result["executor_uuid"], IDENTITY)
+
+    def test_truncated_final_json_records_failure_and_preserves_resume_identity(self):
+        truncated = '{"type":'
+        with self.assertRaises(json.JSONDecodeError) as decoding:
+            json.loads(truncated)
+        result = self.invoke(trailing_stdout=truncated)
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(result["incomplete"])
+        self.assertEqual(result["executor_uuid"], IDENTITY)
+        self.assertEqual(result["error"], str(decoding.exception))
+        self.assertIsNone(result["result"])
+        output = (Path(result["directory"]) / "stdout.jsonl").read_bytes()
+        self.assertTrue(output.endswith(truncated.encode()))
+        state = tasks.TaskStore(self.repo).read("issue-12")
+        record = state["executor"]["runs"][-1]
+        self.assertEqual(state["executor"]["uuid"], IDENTITY)
+        self.assertEqual(record["status"], "failed")
+        self.assertTrue(record["incomplete"])
+        self.assertEqual(record["error"], result["error"])
+        self.assertEqual(record["head_after"], self.base)
+
+        resumed = self.invoke()
+        self.assertFalse(resumed["incomplete"])
+        args = self.model_calls[-1][0]
+        self.assertEqual(args[args.index("resume") + 1], IDENTITY)
+        self.assertNotIn("--last", args)
 
     def test_early_checkpoint_is_not_implementation_completion(self):
         result = self.invoke(status="checkpoint")
