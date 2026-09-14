@@ -4,6 +4,18 @@ The reviewer runs in a new Copilot CLI process and receives committed artifacts,
 not the implementation conversation. Its model-facing tools are `view`, `grep` and
 `glob`. The wrapper performs Git/GitHub operations outside that model process.
 
+## Managed skill procedure
+
+Use `$agentic-review PR #456` to coordinate the existing snapshot/run/publication
+steps with a recorded task and approved plan. Use `$agentic-repair PR #456` afterwards
+to retrieve both submitted reviews and inline comments and resume the exact Astra
+implementation UUID. The standalone review skill completes review; the complete
+workflow skill coordinates subsequent repair and re-review. See [SKILLS.md](SKILLS.md).
+
+A request for another substantive round beyond the configured default requires a
+stated reason and explicit continuation. A failed or incomplete run does not establish
+readiness. Keep the original report intact and publish dispositions separately.
+
 ## Local procedure
 
 From the clean main checkout on the default branch:
@@ -150,7 +162,10 @@ not retarget that packet. Check `metadata.json`, `review.md`, and CLI-reported
 account access. Historical Sonnet pilot results in `VERIFICATION.md` remain
 evidence for those earlier runs, not evidence of Fable inference.
 
-Repair remains an Astra task on the original branch. Post a finding-by-finding
+Managed repair remains an Astra task on the original branch **and original session
+UUID**. A missing UUID must be recovered rather than replaced or selected with
+`--last`. The legacy interactive launcher remains a manual alternative that starts
+a separate session. Post a finding-by-finding
 response with commits and evidence. A third substantive round needs a concrete reason
 such as new nontrivial code or unresolved P0/P1 evidence, not indefinite automated
 back-and-forth.

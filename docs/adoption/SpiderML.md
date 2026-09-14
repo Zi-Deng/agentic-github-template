@@ -39,6 +39,31 @@ set, so it should be reconciled against the actual project before becoming share
 8. Pilot one genuine issue through draft PR, static independent review, repair, human
    merge and guarded cleanup before considering further automation.
 
+## Use the skills after adoption
+
+Install the eight `.agents/skills` directories with the matching helpers and operating
+documents. Verify discovery in the actual Codex host and retain any existing project
+skills. Each new project starts with its own private task records; never transfer an
+executor UUID or `.agentic-local` directory from the template or NICME.
+
+Invoke `$agentic-workflow` for a genuine small issue or use the individual phase
+skills in [SKILLS.md](../agent-workflow/SKILLS.md). Confirm the issue, proposed plan and
+PR belong to `zkdeng-uofa/SpiderML`. Approve the plan before implementation. The
+registered sibling worktree must use the selected SpiderML environment and offline
+CPU checks; skill invocation does not authorize training, downloads or publication.
+
+The dedicated Astra session handles implementation and subsequent repairs using the
+same saved UUID. `$agentic-review PR #P` obtains a new Fable snapshot review, and
+`$agentic-repair PR #P` reads both review and inline comments before resuming Astra.
+Include split/label-map/processor/checkpoint evidence relevant to the actual change.
+
+Use `$agentic-finish PR #P` to assess readiness and obtain the human-run command.
+The human script archives ignored artifacts before guarded cleanup. Preserve dataset
+symlinks without following them, stop task-specific writers, and retain checkpoint
+provenance and the archive journal. The shared dataset, model cache and external
+services are not isolated merely because implementation used a worktree. See
+[FINISH.md](../agent-workflow/FINISH.md) for recovery and partial completion states.
+
 ## Scientific review focus
 
 Preserve the relationship between training and evaluation splits, including seed,
@@ -60,6 +85,7 @@ need the domain gate, not just a software test pass.
 - Updated shared instructions correspond to tracked scripts and real environment tasks.
 - Offline CPU tests execute without downloads, uploads, model tokens or GPUs.
 - Required check names match observed runs and private memory remains untracked.
+- All eight skills are discoverable, and implementation/repair use the same saved UUID.
 - A fresh Copilot review identifies its exact SHA and limitations.
 - The maintainer completes a real pilot merge; cleanup preserves local run artifacts.
 

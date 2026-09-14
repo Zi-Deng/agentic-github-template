@@ -81,3 +81,29 @@ for the requested initial process.
 
 The full implementation is traceable in [TRACEABILITY.md](TRACEABILITY.md). Recorded
 results and remaining external checks live in [VERIFICATION.md](VERIFICATION.md).
+
+
+## Golden Path skills and session continuity — 2026-09-14
+
+The Golden Path was re-read in the PDF (physical pages 13–16; printed pages 12–15)
+and checked against the TeX source. The maintainer chose a dedicated Astra executor,
+approval after proposed-plan publication, and automatic archival by the human-run
+finishing script. Eight repository skills map directly to orchestration plus the
+seven requested phases.
+
+Primary sources checked for this extension:
+
+| Question | Source | Application |
+| --- | --- | --- |
+| Where do repository skills live and how are they selected? | [OpenAI skills](https://learn.chatgpt.com/docs/build-skills) | `.agents/skills`, `SKILL.md`, explicit and implicit selection, optional UI metadata |
+| How can an executor retain its identity? | [OpenAI non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode) | JSONL `thread.started`, persistent execution and explicit UUID resume |
+| Which flags are present locally? | [OpenAI CLI reference](https://learn.chatgpt.com/docs/cli/reference) and installed CLI help | Codex 0.154.0 supports `exec --json`, `exec resume`, model and working-directory selection |
+| What does a worktree isolate? | [Git worktree](https://git-scm.com/docs/git-worktree) | Separate checkout/index with shared repository objects and configuration |
+| How are reviewer tools limited? | [GitHub Copilot tool controls](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools) | Preserve the existing explicit available-tool set and separate publication |
+| What is pinned by the merge flag? | [GitHub CLI merge](https://cli.github.com/manual/gh_pr_merge) | Pin the head; recheck base but do not claim atomic base locking |
+| How can remote cleanup preserve newly pushed commits? | [Git push](https://git-scm.com/docs/git-push) | Explicit expected-SHA lease on the one task ref |
+
+These documents establish interfaces, not live model availability or proof of model
+correctness. Installed Copilot CLI was 1.0.83. Model execution and recovery outcomes
+belong in the separate verification record; no model switch or permissive fallback
+is implied by this research.

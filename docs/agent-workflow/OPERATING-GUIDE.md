@@ -3,6 +3,12 @@
 The issue is the contract, the PR is the durable record, and the maintainer owns the
 merge. Agent conversations support that record; they never replace it.
 
+For the managed Golden Path, invoke `$agentic-workflow` or one of the seven phase
+skills in [SKILLS.md](SKILLS.md). The managed path records plan approval, starts a
+dedicated Astra executor and resumes its exact UUID for repair. The manual commands
+below remain available as low-level alternatives; the legacy interactive `launch`
+examples alone do not provide managed session continuity.
+
 ## Choose the required evidence
 
 | Risk | Typical change | Required process |
@@ -62,8 +68,11 @@ gh api --paginate repos/{owner}/{repo}/issues/123/comments \
   --jq '.[] | {id, author: .user.login, url: .html_url}'
 ```
 
-The operator designates the approved plan. The script verifies that the comment
-belongs to the issue; it does not infer approval from a model's wording.
+The operator designates the approved plan. Low-level review preparation verifies that
+the comment belongs to the issue; it does not infer approval from a model's wording.
+The managed plan skill publishes a clearly proposed comment and records the user's
+approval against the designated issue/plan content. Existing approval of the same
+concrete plan counts; changed contracts must be reconciled before implementation.
 
 ## 3. Create the task workspace
 
@@ -134,10 +143,9 @@ python3 scripts/agentic/workflow.py draft-pr \
 ```
 
 The body needs a standalone `Fixes #123` line matching the task branch's issue. The
-helper returns an existing open PR instead of creating a duplicate. It pushes the
-branch and uses the repository's discovered default branch as the base. Keep the
-body current as the implementation develops; do not save all evidence for the final
-chat response.
+helper pushes the branch, creates a draft against the discovered default branch, or
+updates the existing PR title/body. Keep the evidence current as implementation
+develops; do not save it all for the final chat response.
 
 ## 7. Check CI
 
@@ -159,6 +167,11 @@ approved plan comment ID. The review records the exact head and base commits.
 
 ## 9. Repair in the same PR
 
+Use `$agentic-repair PR #456` for managed repair. It collects both public comment
+surfaces and resumes the recorded implementation UUID. The interactive command below
+starts a separate manual session and does not establish that continuity.
+
+
 ```bash
 gh pr view 456 --comments
 gh api --paginate repos/{owner}/{repo}/pulls/456/comments \
@@ -174,7 +187,13 @@ reassess requirements or design if a serious issue survives them.
 
 ## 10. Human merge and verified cleanup
 
-After reading the review and accepting domain evidence, mark the PR ready. Obtain
+The managed path is `$agentic-finish PR #456`: assess evidence and dispositions,
+validate the designated current review, mark a qualifying PR ready, and prepare the
+human-run finishing command. [FINISH.md](FINISH.md) covers automatic archival and
+recovery. The agent never executes the real merge.
+
+For the low-level manual alternative, after reading the review and accepting domain
+evidence, mark the PR ready. Obtain
 the reviewed SHA from the **review record**, not a new query assumed to be reviewed:
 
 ```bash
@@ -199,9 +218,11 @@ git pull --ff-only
 
 Cleanup is run from the main checkout. It verifies remote merge state, same-repository
 head, default-branch target, expected task name and path, exact local tip and a clean
-worktree. It refuses even ignored files; archive private memory, environments or run
-outputs deliberately before removing the worktree. No automatic remote deletion is
-performed. Repository auto-delete may handle the merged remote branch.
+worktree. The low-level cleanup helper refuses even ignored files. The human finishing
+script first archives these artifacts with a recovery journal, then invokes guarded
+cleanup and deletes a remote task branch only under an explicit matching-SHA lease.
+When using low-level cleanup directly, archive private memory, environments or run
+outputs deliberately first; that low-level command does not delete the remote branch.
 
 For a closed but unmerged PR, preserve the worktree and investigate. Abandonment is
 a separate deliberate action, never an alias for successful cleanup.

@@ -206,14 +206,70 @@ cases. Do not invent a defect to demonstrate the pipeline.
 
 Use the full issue → plan → worktree → draft PR → CPU CI → Copilot review → Astra
 repair loop. The maintainer reviews the scientific implications and merges only the
-recorded reviewed head. Cleanup should reject a worktree that still contains valuable
-ignored outputs or new local commits; archive them explicitly before removal.
+recorded reviewed head. Use the human finishing script to archive ignored outputs
+before guarded cleanup. New local commits, tracked edits and unexpected non-ignored
+files must still block cleanup.
 
 Measure time to first draft PR, CI duration/failure rate, review findings accepted
 versus rejected, repair rounds, model usage and unresolved evidence. Start with one
 high-risk task at a time. If Astra cost becomes disproportionate, propose a measured
 change to use cheaper OpenAI helpers for mechanical drafting or summaries; keep the
 initial all-Astra policy until that decision is made.
+
+## Use the skills after adoption
+
+Include all eight `.agents/skills` directories from the same reviewed template version
+as the helpers. Their relative links depend on the installed operating documents and
+`.agentic` prompts. Preserve NICME's existing instructions, validation commands and
+any independently maintained skills when reconciling installer conflicts. Do not copy
+private `.agentic-local` state or another project's executor UUID.
+
+For the first ordinary NICME issue, open Astra in its clean control checkout and use:
+
+```text
+$agentic-workflow Implement the approved scope of NICME issue #N
+```
+
+Replace `#N` with the real issue. The coordinator must read NICME's issue and current
+code, publish a criterion-to-evidence plan, and obtain approval before coding. In
+particular, require the plan to identify any effects on cost-matrix orientation,
+label/class order, absent classes, NaN handling, data splits and published metrics.
+Do not infer these contracts solely from the template's generic rubric.
+
+The prepare phase creates a linked sibling worktree. The managed implementation
+session uses that worktree and its designated environment. Run the selected NICME
+CPU checks plus the portable workflow tests; collect the extra domain evidence in
+[NICME-VALIDATION.md](NICME-VALIDATION.md) when the change supports a scientific claim.
+The coordinator publishes the draft PR at a coherent checkpoint and updates the
+acceptance/evidence table as checks complete.
+
+Use `$agentic-review PR #P` for a fresh Fable snapshot review and `$agentic-repair PR #P`
+to resume the exact NICME implementation UUID. The repair prompt must include both
+review records and inline comments. Each material finding receives a public fix,
+evidence-backed rebuttal or explicitly accepted follow-up. Changes to head/base require
+fresh review; an unchanged model conversation is not review evidence.
+
+Finally use `$agentic-finish PR #P`. Review the assessment and domain evidence yourself,
+then run the exact supplied finish command. The script archives ignored worktree
+artifacts under the control checkout's private `.agentic-local/archives` and verifies
+merge/tip/registration before cleanup. Keep dataset links as links; never dereference
+or duplicate a shared dataset merely to archive the worktree. Stop experiment writers
+before finishing, and keep the archive journal and run provenance. Archives do not
+expire automatically and can require significant storage across filesystems.
+
+Record these pilot acceptance results in NICME's adoption PR:
+
+- The eight skill names appear in the actual Codex host used for NICME.
+- Issue/plan approval and PR links resolve to NICME, not the template repository.
+- Implementation and repair report the same UUID and registered worktree.
+- The review reports Fable, the exact head/base, coverage limits and no executed tests.
+- CPU CI and required check names match the current NICME configuration.
+- The human finishing command preserves ignored research artifacts and stops on an
+  advanced local or remote task tip.
+
+See [the skill guide](../agent-workflow/SKILLS.md) for individual phase requests and
+[finishing recovery](../agent-workflow/FINISH.md) for interrupted archival. These steps
+belong in the NICME adoption worktree; this template change does not modify NICME.
 
 ## Rollback
 
@@ -228,6 +284,7 @@ deleting research data or rewriting the existing project history.
 
 - [ ] Phase 0 preservation and baseline work is complete.
 - [ ] Installer origin hashes and template commit are recorded.
+- [ ] All eight skills are discoverable and the pilot verifies exact-session repair.
 - [ ] NICME-specific instructions, domains and commands are reviewed.
 - [ ] CPU software checks run in a clean environment without secrets or GPU use.
 - [ ] Check names are observed, required and matched by merge preflight.

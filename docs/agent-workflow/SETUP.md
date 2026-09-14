@@ -241,6 +241,13 @@ CI jobs, issue forms and project validation. There is intentionally no `--force`
 option. Add `/memory/` and `/.agentic-local/` to the project's `.gitignore`; investigate
 already tracked memory before assuming that ignore rules make it private.
 
+The installer includes `.agents/skills` with all eight entrypoints, their metadata,
+and the supporting helpers and guides. After adoption, launch Codex in the project
+and verify that `$agentic-workflow` and the seven phase skills appear; restart the
+session if discovery has not refreshed. Preserve any existing project skills when
+reconciling conflicts. Read [SKILLS.md](SKILLS.md) for invocation and managed session
+recovery and [FINISH.md](FINISH.md) before using the human finishing script.
+
 The portable `agentic-quality` job tests the workflow infrastructure. It cannot test
 your application automatically. Add or retain a separate deterministic project CI
 job, adapt the domain rubric and require the appropriate observed check names.

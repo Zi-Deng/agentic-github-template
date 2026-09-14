@@ -20,10 +20,10 @@ the template and identifies deliberate adaptations.
 | 4.5. Issue/PR templates | `.github/ISSUE_TEMPLATE/change.yml`; PR template | Required criteria, commands, risk and rollback fields |
 | 4.6. CODEOWNERS | Setup instructions for active eligible reviewers | No fictional team or unsatisfiable solo owner approval |
 | 5. Risk and plan design | T0–T4 table; role prompts; plan comment ID | Plan association checked mechanically; approval interpretation remains human |
-| 6.1–6.5. Golden path to checks | Task helper, Astra launch, draft PR helper, CI | Existing work preserved; V1 commands and exact results recorded |
+| 6.1–6.5. Golden path to checks | Capture/plan/prepare/implement skills, approved-contract state, managed Astra launch, draft PR helper and CI | Exact executor UUID and task binding; approval before coding; early draft PR and documented evidence |
 | 6.6. Independent review | Snapshot preparer, Copilot custom agent, read/search tool allowlist | Fresh process/config; no implementation history or PR hook execution |
-| 6.7. Repair protocol | Repair prompt and public disposition procedure | Two substantive rounds by default; no silent finding resolution |
-| 6.8. Merge and cleanup | SHA-aware merge preflight; guarded cleanup | Model never merges; same-repository merged PR and matching local tip required |
+| 6.7. Repair protocol | Repair skill, exact-session resume and public disposition procedure | Reviews and inline comments collected; two substantive rounds by default; changed head/base requires fresh review |
+| 6.8. Merge and cleanup | Finish skill, human-run script, journaled archival and guarded cleanup | Verified merge, matching tips and preserved ignored artifacts; remote deletion uses explicit SHA lease |
 | 7. Review quality and independence | Review rubric with P0–P3 and six required finding components | Static reviewer explicitly reports that it executed no tests |
 | 8. Domain gate | General rubric; NICME/SpiderML adaptations; evidence runner | Software pass does not establish a scientific conclusion |
 | 8.3–8.4. Provenance and large artifacts | Hash/timing/exit-status manifest; artifact policy | Artifact freshness and scientific design still require inspection |
@@ -48,7 +48,9 @@ the template and identifies deliberate adaptations.
    implementation also requires the local tip to equal the PR's merged head before
    bounded force deletion. It rejects mismatched worktree paths, fork PRs and wrong bases.
 2. **Protect ignored local data.** A clean ordinary Git status can still hide important
-   ignored files. Cleanup inspects ignored paths and refuses their deletion.
+   ignored files. Low-level cleanup inspects ignored paths and refuses their deletion.
+   The human finishing script archives them first, preserving links and recording a
+   recoverable journal, then reuses the original cleanup guards.
 3. **Carry the reviewed SHA forward.** Fetching a fresh head immediately before merge
    does not establish that it was reviewed. The helper requires the recorded review SHA,
    checks that it is current, and prints a human-run command with `--match-head-commit`.
@@ -71,3 +73,8 @@ the template and identifies deliberate adaptations.
 10. **Respect the earlier chat.** The recovered decisions specify public publication,
     guides only for sibling projects, both review paths and an initial all-Astra policy.
     The private memory record preserves those decisions and the full current prompt.
+
+11. **Expose the whole Golden Path as skills.** Eight checked-in skill entrypoints cover
+    orchestration and each requested phase. Managed repair resumes the original
+    executor UUID; each independent reviewer still starts fresh. A local approval
+    receipt binds the designated issue/plan but cannot authenticate a human decision.
