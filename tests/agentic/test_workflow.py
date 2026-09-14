@@ -290,6 +290,7 @@ class ReviewTests(GitFixture):
         directory = self.packet()
         meta = review.verify_packet(directory)
         self.assertEqual(meta["head_sha"], self.head)
+        self.assertEqual(meta["requested_model"], workflow.configuration(self.root)["copilot_model"])
         self.assertIn("+value = 2", (directory / "packet/diff.txt").read_text())
         context = json.loads((directory / "packet/context.json").read_text())
         self.assertEqual(context["designated_plan_comment"]["body"], "Approved plan")
@@ -349,6 +350,7 @@ class ReviewTests(GitFixture):
 
     def test_copilot_run_has_fresh_state_and_read_only_tool_allowlist(self):
         directory = self.packet()
+        requested_model = workflow.configuration(self.root)["copilot_model"]
         original = review.run
         observed = []
 
@@ -383,6 +385,11 @@ class ReviewTests(GitFixture):
                 },
             ),
             patch.object(review, "run", side_effect=fake),
+            patch.object(
+                review,
+                "configuration",
+                side_effect=AssertionError("Run must use the model frozen in the review packet"),
+            ),
         ):
             report = review.review(self.repo, directory)
         self.assertTrue(report.exists())
@@ -390,7 +397,8 @@ class ReviewTests(GitFixture):
         self.assertIn("--available-tools=view,grep,glob", argv)
         self.assertNotIn("--allow-all", argv)
         self.assertNotIn("--continue", argv)
-        self.assertEqual(argv[argv.index("--model") + 1], "claude-sonnet-5")
+        self.assertEqual(argv[argv.index("--model") + 1], requested_model)
+        self.assertIn(f"Requested model: `{requested_model}`", report.read_text())
 
 
 class InstallerTests(unittest.TestCase):

@@ -128,14 +128,52 @@ Changing the workflow or its credentials is T4 work.
 
 ## Model selection and repair
 
-The initial configuration requests `claude-sonnet-5`. Choose another explicit Claude
-ID, such as an available Opus variant, only after checking account availability and
-deciding the cost is justified. Do not use `auto`, a built-in agent that silently
+The configuration requests exactly `claude-fable-5`. Fable 5.1 and other model IDs
+are separate choices and are not automatic substitutes. Choose another explicit
+Claude ID only after checking account availability and deciding the cost is
+justified. Do not use `auto`, a built-in agent that silently
 selects another family, or the implementation conversation as a review session.
 Native GitHub Copilot code review is a separate service and does not let you pin this
 Claude choice; see [GitHub's code review description](https://docs.github.com/en/copilot/concepts/agents/code-review).
+
+Local preparation reads configuration from the caller's clean main checkout;
+Actions reads it from the trusted default branch. A model-change PR takes effect
+for the standard review procedure after the maintainer merges it and the local
+main checkout is updated. The PR introducing that change is reviewed under the
+existing trusted configuration. Changing an interactive Copilot model preference
+does not override this wrapper's explicit `--model` argument.
+
+Prepare a fresh packet after a model change. Each packet records its requested
+model and budgets at preparation; changing `.agentic/config.json` afterwards does
+not retarget that packet. Check `metadata.json`, `review.md`, and CLI-reported
+`usage.json` for the actual run. Configuration and mocked tests do not prove live
+account access. Historical Sonnet pilot results in `VERIFICATION.md` remain
+evidence for those earlier runs, not evidence of Fable inference.
 
 Repair remains an Astra task on the original branch. Post a finding-by-finding
 response with commits and evidence. A third substantive round needs a concrete reason
 such as new nontrivial code or unresolved P0/P1 evidence, not indefinite automated
 back-and-forth.
+
+### Claude Fable 5 access and data handling
+
+Checked against GitHub's documentation on 2026-09-11. GitHub lists Fable 5 for
+Copilot Pro+, Max, Business, and Enterprise, including Copilot CLI. Business and
+Enterprise administrators must enable its model policy. Its temporary June 2026
+suspension ended on July 1; consult current account availability rather than an
+older suspension notice. See [GitHub's Fable 5 announcement](https://github.blog/changelog/2026-06-09-claude-fable-5-is-generally-available-for-github-copilot/).
+
+Fable retains prompts and outputs by default for safety processing. The announcement
+specifies up to 30 days and says retained content is not used to train models.
+Do not assume the zero-data-retention behavior of other Claude models applies.
+The private-path exclusions remain active, but ordinary source and comments in
+an authorized review packet are still sent to the model service.
+
+GitHub also describes an approved enterprise ZDR exception through the end of 2026
+while Enterprise Frontier Safeguards are introduced. That exception requires
+separate eligibility and enablement; its terms limit use to internal operations
+and prohibit making model endpoints or outputs available externally. An enterprise
+using that exception must evaluate those terms before enabling public COMMENT
+publication. This template does not negotiate account terms, enable policies, or
+detect which enterprise agreement applies. See the [Fable footnote in GitHub's
+supported-model documentation](https://docs.github.com/en/copilot/reference/ai-models/supported-models#footnotes).

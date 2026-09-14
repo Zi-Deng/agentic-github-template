@@ -24,8 +24,11 @@ flowchart LR
 
 **Model policy:** `gpt-6-astra` for drafting, planning, implementation and repair.
 The independent reviewer uses an explicit Claude model through Copilot CLI;
-`claude-sonnet-5` is the initial configuration. There is no automatic cheaper-model
-fallback. Availability and billing belong to your provider account.
+`claude-fable-5` is the configured reviewer. There is no automatic cheaper-model
+fallback. Availability and billing belong to your provider account. Fable has
+model-specific access and data-retention requirements; read the
+[Fable setup guidance](docs/agent-workflow/REVIEW.md#claude-fable-5-access-and-data-handling)
+before sending a project's review packet.
 
 ## Start here
 
