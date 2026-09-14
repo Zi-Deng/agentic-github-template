@@ -96,6 +96,14 @@ writes. The managed role prompt takes precedence over the generic interactive ro
 workflow: an already-running executor does its work directly and never launches a
 second executor merely because an implementation skill was selected.
 
+`AGENTIC_EXECUTOR_ROLE` prevents accidental coordinator calls and recursive launches;
+it is not a security boundary against a worker that can alter its environment.
+The prose treatment of issue/PR text as untrusted data is also an instruction, not an
+OS restriction. Actual containment depends on the worker sandbox and credential/network
+permissions. Do not claim that the environment marker isolates credentials or makes
+a malicious executor harmless. This is distinct from the independent reviewer's
+restricted model-tool surface.
+
 The Opus reviewer is a new Copilot process with a fresh snapshot and state directory
 for every round. Its selected model is `claude-opus-5`; its available tools are only
 `view`, `grep` and `glob`. It sees the public contract, source/diff, checks and rubric.

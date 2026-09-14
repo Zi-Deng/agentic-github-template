@@ -18,6 +18,11 @@ adoption. Use a healthy Python installation; `python3 -c 'import ctypes'` should
 succeed before relying on the finishing helper. Model sandbox startup must also be
 tested in the environment that will run the managed executor.
 
+The process C library must also expose `renameat2` through `ctypes.CDLL(None)`;
+kernel support alone is insufficient. The helper refuses archival if that symbol
+or the filesystem's no-replace operation is unavailable. Installer target paths
+must not contain parent (`..`) components or symlinks; supply a direct target path.
+
 ```bash
 git --version
 gh --version

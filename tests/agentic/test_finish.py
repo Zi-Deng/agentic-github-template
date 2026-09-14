@@ -128,7 +128,9 @@ class FinishTests(PipelineFixture):
                     self.mark_merged()
                 elif outcome == "queued":
                     self.queued = True
-                return subprocess.CompletedProcess(args, 1 if outcome == "merged-error" else 0, "", "")
+                return subprocess.CompletedProcess(
+                    args, 1 if outcome in {"merged-error", "unmerged"} else 0, "", ""
+                )
             return original(args, **kwargs)
 
         with patch.object(finish, "run", side_effect=fake):
@@ -259,6 +261,88 @@ class FinishTests(PipelineFixture):
         repeated = self.human("queued")
         self.assertTrue(repeated["incomplete"])
         self.assertEqual(len(self.merge_calls), 1)
+
+    def recover_same_head_after_feedback(self, outcome):
+        (self.task_path / "valuable.cache").write_text("preserved result")
+        prepared = self.prepare()
+        first = self.human(outcome)
+        self.assertTrue(first["incomplete"])
+        store = tasks.TaskStore(self.repo)
+        before = store.read("issue-12")
+        self.assertEqual(before["finish"]["status"], outcome)
+        self.queued = False
+        self.conversation.append({"id": 8100, "body": "Additional evidence on the unchanged head"})
+        with self.assertRaisesRegex(workflow.WorkflowError, "Public feedback changed"):
+            self.human()
+        self.assertEqual(len(self.merge_calls), 1)
+        self.assertEqual(git(self.task_path, "rev-parse", "HEAD"), self.head)
+        self.assess()
+        refreshed = self.prepare()
+        self.assertTrue(refreshed["qualified"])
+        after = store.read("issue-12")
+        self.assertEqual(after["executor"], before["executor"])
+        self.assertEqual(after["finish"]["status"], "prepared")
+        self.assertEqual(after["finish"]["head_sha"], before["finish"]["head_sha"])
+        self.assertFalse(Path(prepared["archive"]).exists())
+        self.assertTrue((self.task_path / "valuable.cache").exists())
+        result = self.human()
+        self.assertTrue(result["merged"])
+        self.assertFalse(result["incomplete"])
+        self.assertEqual(len(self.merge_calls), 2)
+        self.assertEqual(
+            (Path(result["archive"]) / "payload/valuable.cache").read_text(),
+            "preserved result",
+        )
+
+    def test_same_head_queued_finish_can_be_reassessed_after_queue_exit(self):
+        self.recover_same_head_after_feedback("queued")
+
+    def test_same_head_declined_finish_can_be_reassessed(self):
+        self.recover_same_head_after_feedback("unmerged")
+
+    def test_repreparation_refuses_ambiguous_or_started_cleanup_phases(self):
+        self.prepare()
+        store = tasks.TaskStore(self.repo)
+        for phase in ("merge-requested", "ambiguous", "merged", "archiving", "local-cleaned"):
+            with self.subTest(phase=phase):
+                with store.locked("issue-12") as state:
+                    state["finish"]["status"] = phase
+                    store.save(state)
+                previous = store.path("issue-12").read_bytes()
+                with self.assertRaisesRegex(workflow.WorkflowError, "Finishing already started"):
+                    self.prepare()
+                self.assertEqual(store.path("issue-12").read_bytes(), previous)
+
+    def test_repreparation_preserves_existing_archive_journal(self):
+        prepared = self.prepare()
+        destination = Path(prepared["archive"])
+        destination.mkdir(parents=True)
+        journal = destination / "journal.json"
+        journal.write_text('{"retained_recovery_evidence": true}\n')
+        previous_journal = journal.read_bytes()
+        store = tasks.TaskStore(self.repo)
+        for phase in ("prepared", "queued", "unmerged"):
+            with self.subTest(phase=phase):
+                with store.locked("issue-12") as state:
+                    state["finish"]["status"] = phase
+                    store.save(state)
+                previous = store.path("issue-12").read_bytes()
+                with self.assertRaisesRegex(workflow.WorkflowError, "Existing archive"):
+                    self.prepare()
+                self.assertEqual(store.path("issue-12").read_bytes(), previous)
+                self.assertEqual(journal.read_bytes(), previous_journal)
+
+    def test_repreparation_refuses_remote_merge_despite_saved_queued_phase(self):
+        prepared = self.prepare()
+        self.human("queued")
+        self.mark_merged()
+        store = tasks.TaskStore(self.repo)
+        previous = store.path("issue-12").read_bytes()
+        with self.assertRaises(workflow.WorkflowError):
+            self.prepare()
+        self.assertEqual(store.path("issue-12").read_bytes(), previous)
+        self.assertFalse(Path(prepared["archive"]).exists())
+        self.assertTrue(self.task_path.exists())
 
     def test_publication_clears_queued_finish_and_allows_current_reassessment(self):
         self.prepare()

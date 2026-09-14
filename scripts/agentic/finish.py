@@ -43,14 +43,16 @@ def server_view(repo, number):
     """
     owner, name = repo.name.split("/")
     cursor = None
+    cursors = set()
     seen = set()
     threads = []
     binding = None
     while True:
-        response = json.loads(
-            run(
+        try:
+            result = run(
                 ["gh", "api", "graphql", "--input", "-"],
                 cwd=repo.root,
+                check=False,
                 input=json.dumps(
                     {
                         "query": query,
@@ -62,38 +64,69 @@ def server_view(repo, number):
                         },
                     }
                 ),
-            ).stdout
-        )
-        if response.get("errors"):
-            raise WorkflowError("GitHub could not establish thread and merge-queue state")
-        current = response["data"]["repository"]["pullRequest"]
-        observed = (sha(current["headRefOid"]), sha(current["baseRefOid"]))
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise WorkflowError("GitHub thread/queue query could not complete") from exc
+        if result.returncode:
+            raise WorkflowError(f"GitHub thread/queue query failed (gh exit {result.returncode})")
+        try:
+            response = json.loads(result.stdout)
+            if not isinstance(response, dict) or response.get("errors"):
+                raise WorkflowError("GitHub could not establish thread and merge-queue state")
+            current = response["data"]["repository"]["pullRequest"]
+            observed = (sha(current["headRefOid"]), sha(current["baseRefOid"]))
+            queue = current["mergeQueueEntry"]
+            connection = current["reviewThreads"]
+            nodes = connection["nodes"]
+            page = connection["pageInfo"]
+            has_next = page["hasNextPage"]
+            next_cursor = page["endCursor"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise WorkflowError("Malformed GitHub thread/queue response") from exc
+        if (
+            not isinstance(nodes, list)
+            or not isinstance(has_next, bool)
+            or (next_cursor is not None and not isinstance(next_cursor, str))
+            or (
+                queue is not None
+                and (
+                    not isinstance(queue, dict)
+                    or not isinstance(queue.get("id"), str)
+                    or not queue["id"].strip()
+                )
+            )
+        ):
+            raise WorkflowError("Malformed GitHub thread/queue response")
         if binding is not None and observed != binding:
             raise WorkflowError("PR changed during thread pagination")
         binding = observed
-        connection = current["reviewThreads"]
-        for thread in connection["nodes"]:
-            if thread["id"] in seen or not isinstance(thread["isResolved"], bool):
+        for thread in nodes:
+            if (
+                not isinstance(thread, dict)
+                or not isinstance(thread.get("id"), str)
+                or not thread["id"].strip()
+                or thread["id"] in seen
+                or not isinstance(thread.get("isResolved"), bool)
+            ):
                 raise WorkflowError("Invalid or duplicate review-thread result")
             seen.add(thread["id"])
             threads.append(thread)
-        page = connection["pageInfo"]
-        if not page["hasNextPage"]:
+        if not has_next:
             return {
                 "head_sha": binding[0],
                 "base_sha": binding[1],
-                "queued": current["mergeQueueEntry"] is not None,
+                "queued": queue is not None,
                 "threads": threads,
             }
-        next_cursor = page["endCursor"]
-        if not next_cursor or next_cursor == cursor:
+        if not next_cursor or not next_cursor.strip() or next_cursor in cursors:
             raise WorkflowError("Review-thread pagination did not advance")
+        cursors.add(next_cursor)
         cursor = next_cursor
 
 
 def required_checks(repo, number):
-    checks = json.loads(
-        run(
+    try:
+        result = run(
             [
                 "gh",
                 "pr",
@@ -106,13 +139,33 @@ def required_checks(repo, number):
                 "name,bucket,state",
             ],
             cwd=repo.root,
-        ).stdout
-    )
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise WorkflowError("GitHub required-check query could not complete") from exc
+    try:
+        checks = json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        raise WorkflowError(f"Malformed required-check response (gh exit {result.returncode})") from exc
+    if not isinstance(checks, list) or any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("name"), str)
+        or not item["name"].strip()
+        or not isinstance(item.get("bucket"), str)
+        or item["bucket"] not in {"pass", "fail", "pending", "skipping", "cancel"}
+        for item in checks
+    ):
+        raise WorkflowError(f"Malformed required-check response (gh exit {result.returncode})")
+    problems = ", ".join(f"{item['name']}: {item['bucket']}" for item in checks if item["bucket"] != "pass")
+    if result.returncode:
+        reason = {8: "pending", 1: "failing or unavailable"}.get(result.returncode, "unavailable")
+        detail = f": {problems}" if problems else ""
+        raise WorkflowError(f"Required checks are {reason} (gh exit {result.returncode}){detail}")
     expected = set(configuration(repo.root)["required_checks"])
     if not expected or not checks or not expected.issubset({item["name"] for item in checks}):
         raise WorkflowError("Required check configuration is absent or does not match policy")
-    if any(item["bucket"] != "pass" for item in checks):
-        raise WorkflowError("Every required check must pass")
+    if problems:
+        raise WorkflowError("Every required check must pass: " + problems)
     return checks
 
 
@@ -347,8 +400,15 @@ def prepare_finish(repo, number, assessment_file, ready=False):
     store = TaskStore(repo)
     with store.locked(f"issue-{number}") as state:
         old = state.get("finish")
-        if old and old.get("status") not in {"prepared"}:
+        if old and old.get("status") not in {"prepared", "queued", "unmerged"}:
             raise WorkflowError("Finishing already started; use the saved human retry command")
+        if old and (
+            old.get("local_cleanup")
+            or "archive_result" in old
+            or "merge_commit_sha" in old
+            or archives.exists(plain_path(old["archive"]))
+        ):
+            raise WorkflowError("Existing archive or cleanup evidence requires the saved recovery record")
         validated = validate_assessment(repo, state, assessment)
         with repo.lock():
             path, _ = cleanup_identity(repo, state, assessment["head_sha"], merged=False)

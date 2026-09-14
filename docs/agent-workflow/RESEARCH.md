@@ -123,3 +123,12 @@ Installed Copilot CLI 1.0.83 exposes `--model` and `--max-ai-credits`. The
 describes the credit allowance as a soft per-response limit. This harness sends one
 prompt, retains the 900-second timeout, and preserves usage evidence. The one-round
 policy and isolated read/search review boundary remain unchanged.
+
+### Required-check result handling
+
+Inspection of [GitHub CLI 2.100.0 checksRun](https://github.com/cli/cli/blob/v2.100.0/pkg/cmd/pr/checks/checks.go)
+shows that JSON export returns before the ordinary pending/failure exit-code selection.
+The merge gate must inspect buckets even on exit zero, and must still reject transport
+or other nonzero failures. The [bucket mapping](https://github.com/cli/cli/blob/v2.100.0/pkg/cmd/pr/checks/aggregate.go)
+classifies only `SUCCESS` as pass; `NEUTRAL` and `SKIPPED` are skipping. Direct regressions
+exercise the gate with these result classes without executing a model or real merge.

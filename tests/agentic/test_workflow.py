@@ -411,6 +411,33 @@ class ReviewTests(GitFixture):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_parent_component_cannot_redirect_install_into_copied_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            copied_source = parent / "source"
+            install.install(SOURCE, copied_source, True)
+            manifest = copied_source / ".agentic/template-origin.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "source": "agentic-github-template",
+                        "files": {"retained-fixture-record": "unchanged"},
+                    }
+                )
+            )
+            previous = manifest.read_bytes()
+            sibling = parent / "outside"
+            sibling.mkdir()
+            target = sibling / ".." / copied_source.name
+            self.assertFalse(target.is_relative_to(copied_source))
+            for apply in (False, True):
+                with self.subTest(apply=apply):
+                    with self.assertRaisesRegex(workflow.WorkflowError, "components"):
+                        install.install(copied_source, target, apply)
+                    self.assertEqual(manifest.read_bytes(), previous)
+                    self.assertEqual(list(sibling.iterdir()), [])
+
     def test_preview_writes_nothing_and_conflicts_abort_before_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "new"

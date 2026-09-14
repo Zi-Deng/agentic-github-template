@@ -139,7 +139,7 @@ control clone and a registered sibling issue worktree. Neither adoption target w
 
 ### Evidence obtained during implementation
 
-- **98 regression tests passed** in the full local gate. The suite uses real temporary
+- **111 regression tests passed** in the full local gate. The suite uses real temporary
   Git repositories and local processes, with mocked GitHub/model services. It covers
   publication reconciliation, approval invalidation, exact-UUID repair with all feedback
   surfaces, stale review rejection, bounded process termination, queued/failed merges,
@@ -232,3 +232,34 @@ packet's frozen credit allowance into the CLI arguments. Current-head live evide
 is published on PR #6; the historical Fable reports above are not Opus verification.
 The 900-second timeout, one-attempt default, continuation records and pending native
 Astra execution limitation remain unchanged.
+
+### Opus findings and repair evidence
+
+The [Opus review](https://github.com/Zi-Deng/agentic-github-template/pull/6#pullrequestreview-5203667943)
+ran with the requested model and 400-credit allowance. Its CLI usage record reports
+`claude-opus-5`. It found no P0/P1 defect, but supported a same-head finish-recovery bug
+and identified gaps in direct merge-gate coverage. The report remains a partial static
+inspection, not human approval.
+
+Repairs allow fresh assessment of a still-unmerged queued/declined task while preserving
+ambiguous merge and existing archive/cleanup records. Direct tests exercise the actual
+required-check and GraphQL parsers using only subprocess-output doubles. They cover
+zero/nonzero CLI results, malformed responses, missing checks, extra required checks,
+thread/queue state, changed head/base, duplicate threads and cursor cycles. The installer
+rejects parent-path components before traversal. New queue/declined recovery and installer
+regressions fail against the reviewed functions and pass after repair. Live read-only
+calls through the revised gates also returned the expected GitHub state.
+
+Two review claims require correction. The packet did contain the issue, designated plan,
+three prior reviews and three check runs in `context.json`; they were not missing from
+the supplied artifacts. GitHub CLI 2.100.0's JSON export path can return zero for failing
+or pending checks, so the report's claim that the bucket-validation path was generally
+unreachable is unsupported for the installed version. Both zero and nonzero outcomes
+are tested. Existing empty/skipped-check tests also provided some earlier coverage.
+
+No P0/P1 finding authorizes an automatic extra round under the selected policy. These
+repairs therefore need explicit continuation for renewed independent review; local/CI
+validation does not make a changed head reviewed. The enlarged bootstrap diff also
+exceeds the unchanged 300 KB packet cap; any future review must explicitly resolve that
+size limit, for example through a scoped larger packet allowance. The 400-credit setting
+alone does not change the diff cap. Native managed executor completion remains blocked.

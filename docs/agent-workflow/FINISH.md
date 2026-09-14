@@ -118,7 +118,9 @@ silently change which tip is considered safe to delete. See [Git's lease semanti
 Automatic archival currently requires Linux and a filesystem supporting
 `renameat2(RENAME_NOREPLACE)`. The implementation stops if that atomic operation is
 unavailable; it does not substitute an overwrite-prone rename. Use a functioning
-CPython 3.12+ interpreter with its standard `ctypes` module. Other platforms can use
+CPython 3.12+ interpreter with its standard `ctypes` module and a process C library
+that exports `renameat2` to `ctypes.CDLL(None)`. Kernel syscall support alone is
+insufficient for this implementation; an unavailable symbol stops archival. Other platforms can use
 the skills and ordinary GitHub phases, but need a reviewed archival adapter before
 relying on automatic finishing.
 
@@ -150,6 +152,7 @@ Read the reported state before retrying:
 | State | Next action |
 | --- | --- |
 | PR unmerged or queued | Wait for or resolve GitHub requirements; rerun the supplied command when appropriate. No cleanup has occurred. |
+| PR still open/unmerged, saved assessment stale after new feedback | Collect feedback and prepare a current assessment, then rerun `finish-prepare` and use its returned human command. Re-preparation may replace only a prepared, queued or unmerged record after current GitHub and workspace checks; it cannot reset an ambiguous merge request or an archive/cleanup already in progress. |
 | PR merged, archival incomplete | Inspect the reported journal and retained source/destination entries. Rerun the same command to reconcile the interrupted archive; do not overwrite either side manually. |
 | PR merged, worktree changed | Preserve and inspect the changes. Reconcile them explicitly before cleanup; the script does not discard new work. |
 | Local cleanup complete, remote branch advanced | Preserve the advanced remote branch and investigate its new commits. Do not replace the expected SHA to force deletion. |

@@ -74,6 +74,8 @@ def payload(source):
 
 
 def install(source, target, apply=False):
+    if ".." in Path(target).parts:
+        raise WorkflowError("Installation target must not contain '..' components")
     source, target = Path(source).resolve(), Path(target).absolute()
     if any(path.is_symlink() for path in (target, *target.parents)):
         raise WorkflowError("Installation target must not contain symlink components")
