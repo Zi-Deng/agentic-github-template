@@ -132,7 +132,7 @@ Local regression tests cover cleanup without an unattended production merge.
 ## Golden Path skills extension — 2026-09-14
 
 The public contract is [issue #5](https://github.com/Zi-Deng/agentic-github-template/issues/5)
-and its [amended approved plan](https://github.com/Zi-Deng/agentic-github-template/issues/5#issuecomment-5671628413).
+and its [amended approved plan](https://github.com/Zi-Deng/agentic-github-template/issues/5#issuecomment-5671809804).
 Implementation is published in [PR #6](https://github.com/Zi-Deng/agentic-github-template/pull/6).
 The original checkout's unrelated untracked material was preserved; work used a clean
 control clone and a registered sibling issue worktree. Neither adoption target was edited.
@@ -221,3 +221,14 @@ No test suite proves the absence of all defects. Model findings need assessment,
 credentials and account entitlements can expire, and new projects need real project
 checks beyond the portable workflow tests. Keep this record current as live stages
 complete and after substantive harness changes.
+
+### Opus/400-credit amendment
+
+After three budget-limited Fable reports, the maintainer explicitly selected
+`claude-opus-5` and a 400-AI-credit allowance and requested renewed review. The model
+pin, managed review guards, skill metadata and operating/adoption guidance were
+updated together. The existing isolation regression also checks propagation of the
+packet's frozen credit allowance into the CLI arguments. Current-head live evidence
+is published on PR #6; the historical Fable reports above are not Opus verification.
+The 900-second timeout, one-attempt default, continuation records and pending native
+Astra execution limitation remain unchanged.

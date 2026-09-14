@@ -53,7 +53,7 @@ registered sibling worktree must use the selected SpiderML environment and offli
 CPU checks; skill invocation does not authorize training, downloads or publication.
 
 The dedicated Astra session handles implementation and subsequent repairs using the
-same saved UUID. `$agentic-review PR #P` obtains a new Fable snapshot review, and
+same saved UUID. `$agentic-review PR #P` obtains a new Opus snapshot review, and
 `$agentic-repair PR #P` reads both review and inline comments before resuming Astra.
 Include split/label-map/processor/checkpoint evidence relevant to the actual change.
 

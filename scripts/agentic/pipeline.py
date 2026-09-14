@@ -256,7 +256,7 @@ def report_record(repo, state, round_record):
         "plan_comment": state["approval"]["plan_comment"],
         "head_sha": round_record["head_sha"],
         "base_sha": round_record["base_sha"],
-        "requested_model": "claude-fable-5",
+        "requested_model": "claude-opus-5",
     }
     if any(meta.get(key) != value for key, value in expected.items()):
         raise WorkflowError("Review metadata differs from the registered pipeline round")
@@ -332,8 +332,8 @@ def review_task(
     with store.locked(f"issue-{number}") as state:
         contract = verify_contract(repo, state)
         pr = current_task_pr(repo, state)
-        if configuration(repo.root)["copilot_model"] != "claude-fable-5":
-            raise WorkflowError("Managed review requires the trusted claude-fable-5 policy")
+        if configuration(repo.root)["copilot_model"] != "claude-opus-5":
+            raise WorkflowError("Managed review requires the trusted claude-opus-5 policy")
         rounds = state.setdefault("review_rounds", [])
         binding = {
             "head_sha": pr["head"]["sha"],
@@ -423,7 +423,7 @@ def review_task(
             "pr": state["pr"],
             "directory": record["directory"],
             "status": record["status"],
-            "model": "claude-fable-5",
+            "model": "claude-opus-5",
             "attempted_rounds": sum(bool(item.get("run_attempted")) for item in rounds),
             "designated_review": state.get("designated_review"),
         }

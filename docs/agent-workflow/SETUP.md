@@ -47,12 +47,11 @@ author. Record that distinction when different accounts are deliberately used.
 Keep tokens in the environment or credential store, never `.agentic/config.json`.
 See [GitHub's Copilot authentication reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
 
-The configured reviewer is `claude-fable-5`. Verify that the account supplying the
-inference credential can select that exact model; earlier Sonnet access does not
-establish Fable access. Read the [Fable access and data-handling guidance](REVIEW.md#claude-fable-5-access-and-data-handling),
-including retention and any applicable enterprise terms, before transmitting a
-project packet. The Copilot Requests token permission and existing environment
-secret names remain the same; selecting a model does not grant account entitlement.
+The configured reviewer is `claude-opus-5`, with a 400-AI-credit review limit. Verify
+that the inference account can select that exact model; earlier Sonnet or Fable access
+does not establish Opus access. Read the [Opus access guidance](REVIEW.md#claude-opus-5-access).
+The Copilot Requests token permission and existing environment secret names remain the
+same; selecting a model does not grant account entitlement.
 
 Open Codex and use `/model`; also inspect Copilot's `/model` picker for account availability before
 spending on a project task. The initial names in `.agentic/config.json` are explicit

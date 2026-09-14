@@ -108,3 +108,18 @@ These documents establish interfaces, not live model availability or proof of mo
 correctness. Installed Copilot CLI was 1.0.83. Model execution and recovery outcomes
 belong in the separate verification record; no model switch or permissive fallback
 is implied by this research.
+
+## Opus reviewer policy update — 2026-09-14
+
+The maintainer requested Opus instead of Fable and a 400-AI-credit allowance. GitHub's
+[current supported-model table](https://docs.github.com/en/copilot/reference/ai-models/supported-models)
+and [Opus 5 announcement](https://github.blog/changelog/2026-07-24-claude-opus-5-is-now-available-in-github-copilot/)
+establish Opus 5 as a current Copilot CLI choice. The implementation pins
+`claude-opus-5`; the actual run must still establish account access. No claim that
+Opus universally outperforms Fable is needed for this user-selected policy.
+
+Installed Copilot CLI 1.0.83 exposes `--model` and `--max-ai-credits`. The
+[current CLI reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#command-line-options)
+describes the credit allowance as a soft per-response limit. This harness sends one
+prompt, retains the 900-second timeout, and preserves usage evidence. The one-round
+policy and isolated read/search review boundary remain unchanged.

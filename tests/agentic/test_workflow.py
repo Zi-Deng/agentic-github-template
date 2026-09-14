@@ -352,8 +352,10 @@ class ReviewTests(GitFixture):
         self.assertEqual(len(self.posts), 1)
 
     def test_copilot_run_has_fresh_state_and_read_only_tool_allowlist(self):
-        directory = self.packet()
-        requested_model = workflow.configuration(self.root)["copilot_model"]
+        packet_config = workflow.configuration(self.root)
+        with patch.object(review, "configuration", return_value=packet_config):
+            directory = self.packet()
+        requested_model = packet_config["copilot_model"]
         original = review.run
         observed = []
 
@@ -391,7 +393,7 @@ class ReviewTests(GitFixture):
             patch.object(
                 review,
                 "configuration",
-                side_effect=AssertionError("Run must use the model frozen in the review packet"),
+                side_effect=AssertionError("Run must use the model and budgets frozen in the review packet"),
             ),
         ):
             report = review.review(self.repo, directory)
@@ -401,6 +403,10 @@ class ReviewTests(GitFixture):
         self.assertNotIn("--allow-all", argv)
         self.assertNotIn("--continue", argv)
         self.assertEqual(argv[argv.index("--model") + 1], requested_model)
+        self.assertEqual(
+            argv[argv.index("--max-ai-credits") + 1],
+            str(packet_config["review_max_ai_credits"]),
+        )
         self.assertIn(f"Requested model: `{requested_model}`", report.read_text())
 
 

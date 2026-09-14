@@ -243,7 +243,7 @@ CPU checks plus the portable workflow tests; collect the extra domain evidence i
 The coordinator publishes the draft PR at a coherent checkpoint and updates the
 acceptance/evidence table as checks complete.
 
-Use `$agentic-review PR #P` for a fresh Fable snapshot review and `$agentic-repair PR #P`
+Use `$agentic-review PR #P` for a fresh Opus snapshot review and `$agentic-repair PR #P`
 to resume the exact NICME implementation UUID. The repair prompt must include both
 review records and inline comments. Each material finding receives a public fix,
 evidence-backed rebuttal or explicitly accepted follow-up. Changes to head/base require
@@ -262,7 +262,7 @@ Record these pilot acceptance results in NICME's adoption PR:
 - The eight skill names appear in the actual Codex host used for NICME.
 - Issue/plan approval and PR links resolve to NICME, not the template repository.
 - Implementation and repair report the same UUID and registered worktree.
-- The review reports Fable, the exact head/base, coverage limits and no executed tests.
+- The review reports Opus, the exact head/base, coverage limits and no executed tests.
 - CPU CI and required check names match the current NICME configuration.
 - The human finishing command preserves ignored research artifacts and stops on an
   advanced local or remote task tip.

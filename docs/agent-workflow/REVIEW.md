@@ -51,7 +51,7 @@ transmitted. This path policy is a baseline, not a content-based secret detector
 Inspect your own source and augment exclusions for a project's restricted paths.
 
 The default budgets are 300 KB of diff, 250 KB per source file, 12 MB of total text,
-15 minutes and 100 Copilot AI credits. These are operational choices, not claims
+15 minutes and 400 Copilot AI credits. These are operational choices, not claims
 about model capacity or price. Per-file omissions are recorded explicitly; oversized
 diffs and total snapshots fail rather than silently presenting a partial review as
 complete. Credit limits are provider controls and may overshoot by a request already
@@ -144,8 +144,8 @@ Changing the workflow or its credentials is T4 work.
 
 ## Model selection and repair
 
-The configuration requests exactly `claude-fable-5`. Fable 5.1 and other model IDs
-are separate choices and are not automatic substitutes. Choose another explicit
+The configuration requests exactly `claude-opus-5`. Other Opus versions and Claude
+families are separate choices and are not automatic substitutes. Choose another explicit
 Claude ID only after checking account availability and deciding the cost is
 justified. Do not use `auto`, a built-in agent that silently
 selects another family, or the implementation conversation as a review session.
@@ -155,8 +155,11 @@ Claude choice; see [GitHub's code review description](https://docs.github.com/en
 Local preparation reads configuration from the caller's clean main checkout;
 Actions reads it from the trusted default branch. A model-change PR takes effect
 for the standard review procedure after the maintainer merges it and the local
-main checkout is updated. The PR introducing that change is reviewed under the
-existing trusted configuration. Changing an interactive Copilot model preference
+main checkout is updated. The normal procedure reviews the introducing PR under the existing trusted configuration.
+An explicit maintainer instruction to use the new model/budget for that PR permits
+a narrowly scoped override in the trusted invocation. Record the authorization and
+exact values in fresh packet metadata; do not activate unreviewed PR instructions or
+rewrite existing packets. This is how the Opus/400-credit transition was authorized. Changing an interactive Copilot model preference
 does not override this wrapper's explicit `--model` argument.
 
 Prepare a fresh packet after a model change. Each packet records its requested
@@ -164,35 +167,29 @@ model and budgets at preparation; changing `.agentic/config.json` afterwards doe
 not retarget that packet. Check `metadata.json`, `review.md`, and CLI-reported
 `usage.json` for the actual run. Configuration and mocked tests do not prove live
 account access. Historical Sonnet pilot results in `VERIFICATION.md` remain
-evidence for those earlier runs, not evidence of Fable inference.
+evidence for those earlier runs, not evidence of Opus inference. Historical Fable
+reports are likewise retained under their original model and budgets.
 
 Managed repair remains an Astra task on the original branch **and original session
 UUID**. A missing UUID must be recovered rather than replaced or selected with
 `--last`. The legacy interactive launcher remains a manual alternative that starts
 a separate session. Post a finding-by-finding
-response with commits and evidence. A third substantive round needs a concrete reason
-such as new nontrivial code or unresolved P0/P1 evidence, not indefinite automated
-back-and-forth.
+response with commits and evidence. One attempted round remains the default; additional
+review follows the critical-finding or explicit-continuation policy above. A larger
+per-review credit allowance does not authorize more rounds or establish completeness.
 
-### Claude Fable 5 access and data handling
+### Claude Opus 5 access
 
-Checked against GitHub's documentation on 2026-09-11. GitHub lists Fable 5 for
-Copilot Pro+, Max, Business, and Enterprise, including Copilot CLI. Business and
-Enterprise administrators must enable its model policy. Its temporary June 2026
-suspension ended on July 1; consult current account availability rather than an
-older suspension notice. See [GitHub's Fable 5 announcement](https://github.blog/changelog/2026-06-09-claude-fable-5-is-generally-available-for-github-copilot/).
+Checked on 2026-09-14. GitHub lists Claude Opus 5 as generally available and supports
+it in Copilot CLI for eligible plans. Business and Enterprise administrators may need
+to enable its model policy. Check the actual authenticated account rather than infer
+availability from a template setting. See [GitHub's Opus 5 announcement](https://github.blog/changelog/2026-07-24-claude-opus-5-is-now-available-in-github-copilot/)
+and [current supported models](https://docs.github.com/en/copilot/reference/ai-models/supported-models).
 
-Fable retains prompts and outputs by default for safety processing. The announcement
-specifies up to 30 days and says retained content is not used to train models.
-Do not assume the zero-data-retention behavior of other Claude models applies.
-The private-path exclusions remain active, but ordinary source and comments in
-an authorized review packet are still sent to the model service.
+The 400-credit setting is a provider-enforced soft allowance for this single-prompt
+review invocation, not a price quote or guarantee of complete inspection. Actual usage
+may overshoot at a request boundary. Preserve `usage.json` and report any incomplete
+coverage. See [GitHub's credit-limit reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#command-line-options).
 
-GitHub also describes an approved enterprise ZDR exception through the end of 2026
-while Enterprise Frontier Safeguards are introduced. That exception requires
-separate eligibility and enablement; its terms limit use to internal operations
-and prohibit making model endpoints or outputs available externally. An enterprise
-using that exception must evaluate those terms before enabling public COMMENT
-publication. This template does not negotiate account terms, enable policies, or
-detect which enterprise agreement applies. See the [Fable footnote in GitHub's
-supported-model documentation](https://docs.github.com/en/copilot/reference/ai-models/supported-models#footnotes).
+Private-path exclusions and static tool restrictions remain in force. The snapshot's
+ordinary source and public comments are sent to Copilot for the authorized review.

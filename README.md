@@ -25,11 +25,10 @@ flowchart LR
 
 **Model policy:** `gpt-6-astra` for drafting, planning, implementation and repair.
 The independent reviewer uses an explicit Claude model through Copilot CLI;
-`claude-fable-5` is the configured reviewer. There is no automatic cheaper-model
-fallback. Availability and billing belong to your provider account. Fable has
-model-specific access and data-retention requirements; read the
-[Fable setup guidance](docs/agent-workflow/REVIEW.md#claude-fable-5-access-and-data-handling)
-before sending a project's review packet.
+`claude-opus-5` is the configured reviewer, with a 400-AI-credit limit and a
+15-minute timeout per review. One attempted round is the default; further review needs
+a supported critical P0/P1 finding or an explicit user request. There is no automatic
+model fallback. Verify account availability with the [Opus setup guidance](docs/agent-workflow/REVIEW.md#claude-opus-5-access).
 
 ## Start here
 
@@ -68,7 +67,7 @@ $agentic-workflow Describe the task to implement
 
 The coordinator publishes an issue and proposed plan, waits for your plan approval,
 then starts a dedicated Astra executor in the sibling worktree. Repairs resume that
-executor; every Fable review starts fresh. Use `$agentic-review PR #456` or
+executor; every Opus review starts fresh. Use `$agentic-review PR #456` or
 `$agentic-repair PR #456` for a single phase. The [skill guide](docs/agent-workflow/SKILLS.md)
 lists all eight entrypoints and recovery behavior. `$agentic-finish` prepares the
 script that you run to merge, archive ignored artifacts, and clean up verified branches.

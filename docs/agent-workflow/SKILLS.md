@@ -21,7 +21,7 @@ skills do not appear, restart the session. See [OpenAI's skills documentation](h
 | Plan an existing issue | `$agentic-plan Issue #123` | Proposed plan comment, then recorded human approval |
 | Prepare the workspace | `$agentic-prepare Issue #123` | Registered sibling worktree and branch |
 | Implement an approved task | `$agentic-implement Issue #123` | Dedicated Astra executor, coherent commits, checks and draft PR |
-| Review the current PR | `$agentic-review PR #456` | Fresh Fable COMMENT review bound to the current head/base |
+| Review the current PR | `$agentic-review PR #456` | Fresh Opus COMMENT review bound to the current head/base |
 | Address review findings | `$agentic-repair PR #456` | Same Astra session, repairs and public dispositions |
 | Prepare to merge | `$agentic-finish PR #456` | Evidence assessment and exact human-run finishing command |
 
@@ -42,7 +42,7 @@ flowchart TD
   A -->|Yes| W[Prepare sibling worktree]
   W --> I[Start dedicated Astra executor]
   I --> D[Commit, publish draft PR and check evidence]
-  D --> R[Fresh isolated Fable review]
+  D --> R[Fresh isolated Opus review]
   R --> F{Supported material findings?}
   F -->|Yes| X[Resume original Astra UUID and publish dispositions]
   X --> D
@@ -85,7 +85,7 @@ change the active model of an arbitrary host conversation; use Astra for coordin
 and the explicit managed launcher for implementation. Cheaper-model changes require
 a separate deliberate policy decision.
 
-The managed launcher and review coordinator explicitly enforce the selected Astra/Fable
+The managed launcher and review coordinator explicitly enforce the selected Astra/Opus
 policy. A deliberate model change must update those policy guards and their validation
 along with configuration and role guidance; editing a model ID alone is insufficient
 for the managed path.
@@ -96,8 +96,8 @@ writes. The managed role prompt takes precedence over the generic interactive ro
 workflow: an already-running executor does its work directly and never launches a
 second executor merely because an implementation skill was selected.
 
-The Fable reviewer is a new Copilot process with a fresh snapshot and state directory
-for every round. Its selected model is `claude-fable-5`; its available tools are only
+The Opus reviewer is a new Copilot process with a fresh snapshot and state directory
+for every round. Its selected model is `claude-opus-5`; its available tools are only
 `view`, `grep` and `glob`. It sees the public contract, source/diff, checks and rubric.
 It receives neither the Astra conversation nor private task memory. Read
 [REVIEW.md](REVIEW.md) for the exact isolation boundary and evidence limitations.
