@@ -22,7 +22,7 @@ the template and identifies deliberate adaptations.
 | 5. Risk and plan design | T0–T4 table; role prompts; plan comment ID | Plan association checked mechanically; approval interpretation remains human |
 | 6.1–6.5. Golden path to checks | Capture/plan/prepare/implement skills, approved-contract state, managed Astra launch, draft PR helper and CI | Exact executor UUID and task binding; approval before coding; early draft PR and documented evidence |
 | 6.6. Independent review | Snapshot preparer, Copilot custom agent, read/search tool allowlist | Fresh process/config; no implementation history or PR hook execution |
-| 6.7. Repair protocol | Repair skill, exact-session resume and public disposition procedure | Reviews and inline comments collected; two substantive rounds by default; changed head/base requires fresh review |
+| 6.7. Repair protocol | Repair skill, exact-session resume and public disposition procedure | Reviews and inline comments collected; user-selected one attempted round by default, with documented critical P0/P1 or explicit continuation; changed head/base requires fresh review |
 | 6.8. Merge and cleanup | Finish skill, human-run script, journaled archival and guarded cleanup | Verified merge, matching tips and preserved ignored artifacts; remote deletion uses explicit SHA lease |
 | 7. Review quality and independence | Review rubric with P0–P3 and six required finding components | Static reviewer explicitly reports that it executed no tests |
 | 8. Domain gate | General rubric; NICME/SpiderML adaptations; evidence runner | Software pass does not establish a scientific conclusion |

@@ -141,22 +141,50 @@ class PipelineTests(PipelineFixture):
         with self.assertRaisesRegex(workflow.WorkflowError, "No designated"):
             pipeline.validate_designated(self.repo, state)
 
-    def test_third_model_round_requires_explicit_reason_and_continuation(self):
+    def test_second_model_round_requires_explicit_reason_and_continuation(self):
+        store = tasks.TaskStore(self.repo)
+        reason = "Fixture operator explicitly approved another review of the recovery change"
         with patch.object(review, "review", side_effect=self.model_double):
             pipeline.review_task(self.repo, 12, execute=True)
-            pipeline.review_task(self.repo, 12, execute=True, fresh=True)
-            with self.assertRaisesRegex(workflow.WorkflowError, "explicit continuation"):
-                pipeline.review_task(self.repo, 12, execute=True, fresh=True)
-            self.assertEqual(self.model_runs, 2)
-            pipeline.review_task(
+            original_rounds = store.read("issue-12")["review_rounds"]
+            for approved, supplied_reason in (
+                (False, None),
+                (True, None),
+                (True, ""),
+                (True, " \n\t "),
+                (False, reason),
+            ):
+                with self.subTest(approved=approved, reason=supplied_reason):
+                    with self.assertRaisesRegex(workflow.WorkflowError, "explicit continuation"):
+                        pipeline.review_task(
+                            self.repo,
+                            12,
+                            execute=True,
+                            fresh=True,
+                            continue_reason=supplied_reason,
+                            approved_continuation=approved,
+                        )
+                    self.assertEqual(self.model_runs, 1)
+                    self.assertEqual(store.read("issue-12")["review_rounds"], original_rounds)
+            result = pipeline.review_task(
                 self.repo,
                 12,
                 execute=True,
                 fresh=True,
-                continue_reason="Newly discovered cross-filesystem recovery defect",
+                continue_reason=reason,
                 approved_continuation=True,
             )
-        self.assertEqual(self.model_runs, 3)
+            self.assertEqual(result["attempted_rounds"], 2)
+            saved_rounds = store.read("issue-12")["review_rounds"]
+            self.assertEqual(saved_rounds[:-1], original_rounds)
+            self.assertEqual(
+                saved_rounds[-1]["continuation"],
+                {"approved": True, "reason": reason},
+            )
+            with self.assertRaisesRegex(workflow.WorkflowError, "explicit continuation"):
+                pipeline.review_task(self.repo, 12, execute=True, fresh=True)
+            self.assertEqual(store.read("issue-12")["review_rounds"], saved_rounds)
+        self.assertEqual(self.model_runs, 2)
 
     def test_failed_model_run_is_not_silently_restarted(self):
         with patch.object(review, "review", side_effect=workflow.WorkflowError("model unavailable")):

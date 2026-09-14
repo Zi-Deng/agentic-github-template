@@ -347,7 +347,7 @@ def review_task(
         attempted = sum(bool(item.get("run_attempted")) for item in rounds)
         if (
             needs_run
-            and attempted >= 2
+            and attempted >= 1
             and (not approved_continuation or not (continue_reason or "").strip())
         ):
             raise WorkflowError("Further review requires a stated reason and explicit continuation")

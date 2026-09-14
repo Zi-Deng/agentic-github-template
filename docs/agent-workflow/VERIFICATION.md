@@ -132,7 +132,7 @@ Local regression tests cover cleanup without an unattended production merge.
 ## Golden Path skills extension — 2026-09-14
 
 The public contract is [issue #5](https://github.com/Zi-Deng/agentic-github-template/issues/5)
-and its [approved plan](https://github.com/Zi-Deng/agentic-github-template/issues/5#issuecomment-5669832153).
+and its [amended approved plan](https://github.com/Zi-Deng/agentic-github-template/issues/5#issuecomment-5671628413).
 Implementation is published in [PR #6](https://github.com/Zi-Deng/agentic-github-template/pull/6).
 The original checkout's unrelated untracked material was preserved; work used a clean
 control clone and a registered sibling issue worktree. Neither adoption target was edited.
@@ -189,6 +189,13 @@ contract. The rejection regression fails against the reviewed function and passe
 after repair. A further regression demonstrates recovery through normal publication,
 completion and renewed review after a merge queue rejects a task. The latest repair
 requires fresh independent review; no third round was run without explicit continuation.
+
+The user subsequently selected one attempted review round by default, with further
+review for supported critical P0/P1 findings or an explicit request, and requested a
+fresh Fable review now. The continuation regression confirms that the second attempt
+needs both recorded authorization and a nonblank reason, preserves the historical
+rounds, and does not grant later rounds automatically. The 98-test gate passes with
+this policy. Per-review credit/time limits and executor permissions remain unchanged.
 
 Local validation uses a separate environment built from system CPython 3.12.3 with
 the repository's pinned Ruff 0.16.7 and PyYAML 6.0.3. The previously reused ML environment

@@ -291,7 +291,14 @@ class FinishTests(PipelineFixture):
         self.record_completed_executor(role="repair")
         git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
         with patch.object(review, "review", side_effect=self.model_double):
-            pipeline.review_task(self.repo, 12, execute=True, publish=True)
+            pipeline.review_task(
+                self.repo,
+                12,
+                execute=True,
+                publish=True,
+                approved_continuation=True,
+                continue_reason="Fixture operator explicitly approved review after queue recovery",
+            )
         self.assess()
         prepared = self.prepare()
         self.assertTrue(prepared["qualified"])

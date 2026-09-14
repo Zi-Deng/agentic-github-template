@@ -161,7 +161,9 @@ python3 scripts/agentic/workflow.py publish-pr 123 \
   --title "Validate export configuration" --body-file /tmp/pr.md
 python3 scripts/agentic/workflow.py respond 123 --key round-one \
   --body-file /tmp/repair-response.md
-python3 scripts/agentic/workflow.py task-review 123 --execute --publish
+# Only for a supported critical repair or an explicitly requested extra round:
+python3 scripts/agentic/workflow.py task-review 123 --execute --publish \
+  --approved-continuation --continue-reason "Actual finding/repair reference or user request"
 ```
 
 Most task commands take the **issue** number. The repair launcher takes the **PR**
@@ -171,9 +173,10 @@ or finish and performs that lookup; it must not interchange the two identifiers.
 The review helper reuses a completed report for the same head/base when reconciling
 publication. It never silently reruns an uncertain model invocation. Use `--fresh`
 for a deliberate new attempt. A changed head/base creates a new snapshot automatically.
-After two attempted runs, a further execution needs both `--approved-continuation`
-and `--continue-reason "..."`, backed by actual user authorization. This conservative
-accounting also counts failed invocations, because they can consume credits.
+After one attempted run, each further execution needs both `--approved-continuation`
+and `--continue-reason "..."`, backed by the critical-finding exception or an explicit
+user request described below. This conservative accounting also counts failed
+invocations, because they can consume credits.
 
 ### Recover an interrupted executor
 
@@ -238,10 +241,20 @@ pagination. Each material finding receives one public disposition:
 - **Deferred:** link a follow-up and record the user's acceptance of deferring a valid
   out-of-scope defect. An unresolved merge blocker cannot disappear by relabeling it.
 
-A new head or base requires a new independent review. Two substantive rounds are the
-default. Continuing beyond that limit requires a stated reason and explicit user
-continuation; do not generate repeated reviews indefinitely. Existing time and credit
-limits remain in effect, and failed/partial execution is recorded honestly.
+A new head or base requires a new independent review. **One attempted round per task**
+is the default, including failed or partial attempts. A supported critical **P0/P1**
+finding authorizes a further round to verify its repair. The coordinator must assess
+the evidence and record the public review/finding reference and concrete repair reason
+with `--approved-continuation --continue-reason TEXT`. These flags record existing
+authority; they do not create it or classify model text automatically.
+
+Other extra rounds require an explicit user request. P2/P3 findings, uncertain questions
+and incomplete coverage alone do not activate the critical-finding exception. After an
+authorized extra round, reassess whether another is permitted; continuation is not an
+unlimited loop. New commits still invalidate review readiness. If noncritical repairs
+change the head after the round is used, report that fresh review is needed and retain
+draft status until continuation is authorized. Keep the existing per-run time/credit
+limits and report failed/partial execution honestly.
 
 Before finish, inspect acceptance evidence and review dispositions rather than infer
 readiness from green CI or an empty findings list. The coordinator records its explicit

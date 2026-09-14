@@ -12,9 +12,13 @@ to retrieve both submitted reviews and inline comments and resume the exact Astr
 implementation UUID. The standalone review skill completes review; the complete
 workflow skill coordinates subsequent repair and re-review. See [SKILLS.md](SKILLS.md).
 
-A request for another substantive round beyond the configured default requires a
-stated reason and explicit continuation. A failed or incomplete run does not establish
-readiness. Keep the original report intact and publish dispositions separately.
+One attempted round per task is the default. A supported critical P0/P1 finding permits
+a further round to verify its repair; the coordinator records the public finding and
+concrete reason through the continuation flags. Other extra rounds need an explicit
+user request. P2/P3 findings, uncertain questions and incomplete coverage do not by
+themselves permit another round. Every additional invocation needs its own recorded
+basis; see [the continuation procedure](SKILLS.md). A failed or incomplete run does not
+establish readiness. Keep the original report intact and publish dispositions separately.
 
 ## Local procedure
 

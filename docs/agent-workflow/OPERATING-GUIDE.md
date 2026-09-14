@@ -182,8 +182,10 @@ python3 scripts/agentic/workflow.py launch repair 456 --execute
 Run the launch command inside the original task worktree. For each material finding,
 post one disposition: fix with commit/test evidence, rebut with evidence, or a linked
 follow-up issue agreed to be outside scope. Do not silently resolve or lower severity.
-New commits require fresh review. Two substantive repair rounds are the default;
-reassess requirements or design if a serious issue survives them.
+New commits require fresh review. One attempted review round is the default. A supported
+critical P0/P1 finding authorizes a further round to verify its repair; record the
+finding and reason. Other extra rounds require explicit user continuation. A used
+round budget never makes an unreviewed new head ready. See [the continuation procedure](SKILLS.md).
 
 ## 10. Human merge and verified cleanup
 
