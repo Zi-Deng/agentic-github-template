@@ -71,6 +71,9 @@ class GitFixture(unittest.TestCase):
         self.environ.start()
         self.addCleanup(self.environ.stop)
         os.environ.pop("WT_ROOT", None)
+        # These fixtures simulate coordinator operations even when their caller
+        # is a managed executor. Dedicated tests explicitly restore the guard.
+        os.environ.pop("AGENTIC_EXECUTOR_ROLE", None)
 
     def api(self, suffix, *, data=None, **kwargs):
         if data is not None:
@@ -349,8 +352,10 @@ class ReviewTests(GitFixture):
         self.assertEqual(len(self.posts), 1)
 
     def test_copilot_run_has_fresh_state_and_read_only_tool_allowlist(self):
-        directory = self.packet()
-        requested_model = workflow.configuration(self.root)["copilot_model"]
+        packet_config = workflow.configuration(self.root)
+        with patch.object(review, "configuration", return_value=packet_config):
+            directory = self.packet()
+        requested_model = packet_config["copilot_model"]
         original = review.run
         observed = []
 
@@ -388,7 +393,7 @@ class ReviewTests(GitFixture):
             patch.object(
                 review,
                 "configuration",
-                side_effect=AssertionError("Run must use the model frozen in the review packet"),
+                side_effect=AssertionError("Run must use the model and budgets frozen in the review packet"),
             ),
         ):
             report = review.review(self.repo, directory)
@@ -398,10 +403,41 @@ class ReviewTests(GitFixture):
         self.assertNotIn("--allow-all", argv)
         self.assertNotIn("--continue", argv)
         self.assertEqual(argv[argv.index("--model") + 1], requested_model)
+        self.assertEqual(
+            argv[argv.index("--max-ai-credits") + 1],
+            str(packet_config["review_max_ai_credits"]),
+        )
         self.assertIn(f"Requested model: `{requested_model}`", report.read_text())
 
 
 class InstallerTests(unittest.TestCase):
+    def test_parent_component_cannot_redirect_install_into_copied_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            copied_source = parent / "source"
+            install.install(SOURCE, copied_source, True)
+            manifest = copied_source / ".agentic/template-origin.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "source": "agentic-github-template",
+                        "files": {"retained-fixture-record": "unchanged"},
+                    }
+                )
+            )
+            previous = manifest.read_bytes()
+            sibling = parent / "outside"
+            sibling.mkdir()
+            target = sibling / ".." / copied_source.name
+            self.assertFalse(target.is_relative_to(copied_source))
+            for apply in (False, True):
+                with self.subTest(apply=apply):
+                    with self.assertRaisesRegex(workflow.WorkflowError, "components"):
+                        install.install(copied_source, target, apply)
+                    self.assertEqual(manifest.read_bytes(), previous)
+                    self.assertEqual(list(sibling.iterdir()), [])
+
     def test_preview_writes_nothing_and_conflicts_abort_before_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "new"
@@ -424,6 +460,30 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((target / "memory").exists())
             self.assertFalse((target / "README.md").exists())
             self.assertTrue((target / "scripts/agentic/workflow.py").exists())
+            self.assertTrue((target / "scripts/finish-task.sh").exists())
+            self.assertEqual(len(list((target / ".agents/skills").glob("*/SKILL.md"))), 8)
+            self.assertFalse((target / ".agentic-local").exists())
+
+    def test_installer_rejects_non_directory_ancestor_before_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "new"
+            target.mkdir()
+            (target / "scripts").write_text("existing user file")
+            with self.assertRaisesRegex(workflow.WorkflowError, "before any writes"):
+                install.install(SOURCE, target, True)
+            self.assertFalse((target / ".agentic").exists())
+            self.assertEqual((target / "scripts").read_text(), "existing user file")
+
+    def test_installer_preserves_unrecognized_origin_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "new"
+            (target / ".agentic").mkdir(parents=True)
+            manifest = target / ".agentic/template-origin.json"
+            manifest.write_text('{"private_user_record": true}')
+            with self.assertRaisesRegex(workflow.WorkflowError, "before any writes"):
+                install.install(SOURCE, target, True)
+            self.assertFalse((target / "scripts").exists())
+            self.assertEqual(json.loads(manifest.read_text()), {"private_user_record": True})
 
 
 if __name__ == "__main__":

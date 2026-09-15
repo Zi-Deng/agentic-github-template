@@ -8,7 +8,20 @@ has completed the review loop. The same files support both paths.
 Use Python 3.12 or newer, current Git and GNU Make. Install GitHub CLI, Codex and Copilot CLI
 from their official distribution channels. This workstation was provisioned with
 GitHub CLI 2.100.0 and Copilot CLI 1.0.83 from release archives whose SHA-256 digests
-were checked against GitHub release metadata. Codex 0.146.0 was already installed.
+were checked against GitHub release metadata. The Golden Path extension was validated
+against installed Codex 0.154.0 on 2026-09-14. These are observed versions, not a
+claim that they remain the latest releases.
+
+The human finishing script currently targets Linux with atomic no-replace rename
+support. Its [archival requirements and recovery procedure](FINISH.md) are part of
+adoption. Use a healthy Python installation; `python3 -c 'import ctypes'` should
+succeed before relying on the finishing helper. Model sandbox startup must also be
+tested in the environment that will run the managed executor.
+
+The process C library must also expose `renameat2` through `ctypes.CDLL(None)`;
+kernel support alone is insufficient. The helper refuses archival if that symbol
+or the filesystem's no-replace operation is unavailable. Installer target paths
+must not contain parent (`..`) components or symlinks; supply a direct target path.
 
 ```bash
 git --version
@@ -39,12 +52,11 @@ author. Record that distinction when different accounts are deliberately used.
 Keep tokens in the environment or credential store, never `.agentic/config.json`.
 See [GitHub's Copilot authentication reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
 
-The configured reviewer is `claude-fable-5`. Verify that the account supplying the
-inference credential can select that exact model; earlier Sonnet access does not
-establish Fable access. Read the [Fable access and data-handling guidance](REVIEW.md#claude-fable-5-access-and-data-handling),
-including retention and any applicable enterprise terms, before transmitting a
-project packet. The Copilot Requests token permission and existing environment
-secret names remain the same; selecting a model does not grant account entitlement.
+The configured reviewer is `claude-opus-5`, with a 400-AI-credit review limit. Verify
+that the inference account can select that exact model; earlier Sonnet or Fable access
+does not establish Opus access. Read the [Opus access guidance](REVIEW.md#claude-opus-5-access).
+The Copilot Requests token permission and existing environment secret names remain the
+same; selecting a model does not grant account entitlement.
 
 Open Codex and use `/model`; also inspect Copilot's `/model` picker for account availability before
 spending on a project task. The initial names in `.agentic/config.json` are explicit
@@ -240,6 +252,13 @@ relevant files into the adoption worktree manually. Preserve existing instructio
 CI jobs, issue forms and project validation. There is intentionally no `--force`
 option. Add `/memory/` and `/.agentic-local/` to the project's `.gitignore`; investigate
 already tracked memory before assuming that ignore rules make it private.
+
+The installer includes `.agents/skills` with all eight entrypoints, their metadata,
+and the supporting helpers and guides. After adoption, launch Codex in the project
+and verify that `$agentic-workflow` and the seven phase skills appear; restart the
+session if discovery has not refreshed. Preserve any existing project skills when
+reconciling conflicts. Read [SKILLS.md](SKILLS.md) for invocation and managed session
+recovery and [FINISH.md](FINISH.md) before using the human finishing script.
 
 The portable `agentic-quality` job tests the workflow infrastructure. It cannot test
 your application automatically. Add or retain a separate deterministic project CI

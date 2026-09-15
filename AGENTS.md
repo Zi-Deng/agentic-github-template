@@ -13,6 +13,9 @@ This repository implements the supplied issue-to-PR guide. Read
 - Draft, plan, implement, and repair with `gpt-6-astra`. Cheaper OpenAI models
   require a deliberate policy change. Independent review uses Copilot CLI.
 - Agents do not merge. The maintainer decides whether the reviewed commit is ready.
+  The finish skill prepares a command; only the human runs `scripts/finish-task.sh`.
+- Managed implementation and repair use the same recorded Astra session UUID. An
+  already-running executor performs its assigned phase directly without recursive launch.
 - Workflow, dependency, permission, and release changes require explicit task scope.
   Existing user authorization counts; do not ask again for an authorized step.
 - Do not edit NICME or SpiderML when working on this template or its adoption guides.
@@ -25,6 +28,8 @@ This repository implements the supplied issue-to-PR guide. Read
 - Full local gate: `make check`. CI adds `make check-clean` after validation.
 - `scripts/agentic/`: orchestration, review snapshot, installation, provenance.
 - `.agentic/`: model configuration and reusable role prompts.
+- `.agents/skills/`: complete workflow and seven phase entrypoints; read
+  `docs/agent-workflow/SKILLS.md` for managed execution and continuity.
 - `.github/`: issue form, PR template, deterministic CI and manual review workflow.
 - `tests/agentic/`: real local Git repositories with mocked external services.
 - `docs/`: public operating guidance, research notes and adoption plans.
@@ -41,4 +46,5 @@ This repository implements the supplied issue-to-PR guide. Read
 - Never commit credentials, private memory, datasets, or generated model artifacts.
 - Keep scientific validity separate from passing software checks.
 - Cleanup requires a merged PR, a matching local tip, a registered clean worktree,
-  and no ignored files that would be lost. Never use blanket cleanup commands.
+  and no ignored files that would be lost. The human finishing script archives ignored
+  artifacts with verification before invoking guarded cleanup. Never use blanket cleanup commands.
