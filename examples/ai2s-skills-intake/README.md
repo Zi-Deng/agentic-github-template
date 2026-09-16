@@ -31,6 +31,7 @@ expertise score nor interprets an unchecked option as a lack of skill.
 | [Integration tests](tests/pipeline.test.cjs) | Real entrypoints/adapters against a synthetic API model |
 | [API contract tests](tests/contracts.test.cjs) | IDs, permissions, revisions, pagination, literal values and error boundaries |
 | [Repair regressions](tests/repairs.test.cjs) | Forms request schema, responder views, native outline and paused rollout |
+| [Review regressions](tests/review-findings.test.cjs) | Batch isolation, durable-state failure, corrupt profile history, link annotations and busy logs |
 
 ## Development
 

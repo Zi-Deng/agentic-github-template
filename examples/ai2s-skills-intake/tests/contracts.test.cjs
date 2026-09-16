@@ -32,8 +32,10 @@ test('Docs requests preserve UTF-16 offsets and clear unsafe links without cross
   const s = f.state(), doc = f.docs[s.template.id], api = f.context.Ai2sDocuments;
   const paragraphs = [
     { style: 'TITLE', text: '🌱 Skills' },
-    { style: 'NORMAL_TEXT', text: 'Project, portfolio, or other link (unverified): https://example.org/research' },
-    { style: 'NORMAL_TEXT', text: 'Project, portfolio, or other link (unverified): javascript:alert(1)' }
+    { style: 'NORMAL_TEXT', text: 'Reference: https://example.org/research',
+      linkCandidate: { url: 'https://example.org/research', offset: 'Reference: '.length } },
+    { style: 'NORMAL_TEXT', text: 'Reference: javascript:alert(1)',
+      linkCandidate: { url: 'javascript:alert(1)', offset: 'Reference: '.length } }
   ];
   const update = plain(api.profileUpdate(doc, s.templateTabs, { paragraphs }));
   assert.equal(update.writeControl.requiredRevisionId, doc.revisionId);

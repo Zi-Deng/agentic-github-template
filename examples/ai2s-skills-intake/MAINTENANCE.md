@@ -44,6 +44,11 @@ Apps Script Executions view and private Register. Pending/blocked rows are unfin
 work, even if a trigger invocation itself returned normally. The script returns safe
 status codes and logs them without response contents or provider error bodies. Expected
 errors are caught deliberately; execution “Completed” alone is not processing success.
+Lock contention logs `{"status":"busy"}` without respondent content; reconciliation
+will pick up the unprocessed response. A malformed response ID logs `INVALID_ID` and
+counts as pending while other responses continue. Global cursor/state persistence
+failures stop the run: no checkpoint is assumed saved, and a later retry rereads
+durable state. Investigate repeated failures rather than clearing the cursor or journal.
 
 Check group membership with its institutional administrator, and test permissions as
 actual users. API checks cannot attest who belongs to a configured group. Team readers
@@ -79,6 +84,14 @@ or infer that a missing response means its profile should be deleted.
 | `REGISTER_DUPLICATE`, `REGISTER_CORRUPT`, `REGISTER_MISSING`, `STATE_CORRUPT`, `STATE_WRITE_FAILED`, `STATE_TOO_LARGE` | Pause, preserve evidence and recover the authoritative private state from a verified backup |
 | `RECORD_TOO_LARGE`, `UNSUPPORTED_TEXT` | Ask the member to shorten the intake or replace unsupported control/private-use characters. Do not truncate claims; durable additional context can go in Member notes |
 | `TRIGGER_DRIFT` | Pause, inspect the owner's triggers, then reinstall the recorded handlers through the provided function |
+
+Completed member history without a profile ID raises a sticky `REGISTER_CORRUPT`
+response block. Repeated retries cannot create a replacement document. While paused,
+the owner must establish the original profile ID from verified private records, inspect
+the actual file and restore the affected member/binding records together from an
+authoritative backup, without overwriting newer unrelated records. Identity recovery
+does not clear this corruption block. If the original identity cannot be established,
+leave the response blocked; do not delete its row to start again.
 
 ## Uncertain creation
 

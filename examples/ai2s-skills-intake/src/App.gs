@@ -33,7 +33,10 @@ var Ai2sApp = (function () {
   }
   function locked(work) {
     var lock = LockService.getScriptLock();
-    if (!lock.tryLock(1000)) return { status: 'busy' };
+    if (!lock.tryLock(1000)) {
+      console.log(JSON.stringify({ status: 'busy' }));
+      return { status: 'busy' };
+    }
     try {
       var result = work();
       console.log(JSON.stringify(result));

@@ -60,12 +60,14 @@ var Ai2sDocuments = (function () {
         foregroundColor: { color: { rgbColor: style === 'NORMAL_TEXT' ?
           { red: 0.1, green: 0.1, blue: 0.1 } : { red: 0.1, green: 0.2, blue: 0.35 } } }
       }, fields: 'weightedFontFamily,fontSize,bold,foregroundColor,link' } });
-      var prefix = 'Project, portfolio, or other link (unverified): ';
-      if (r.paragraph.text.indexOf(prefix) === 0) {
-        var url = r.paragraph.text.slice(prefix.length);
-        if (/^https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?(?:[/?#][^\s<>"\\]*)?$/.test(url)) {
+      var candidate = r.paragraph.linkCandidate;
+      if (candidate && typeof candidate.url === 'string' && Number.isInteger(candidate.offset) && candidate.offset >= 0) {
+        var url = candidate.url;
+        if (r.paragraph.text.slice(candidate.offset, candidate.offset + url.length) === url &&
+            /^https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?(?:[/?#][^\s<>"\\]*)?$/.test(url)) {
           requests.push({ updateTextStyle: { range: { tabId: tabId,
-            startIndex: r.range.startIndex + prefix.length, endIndex: r.range.endIndex - 1 },
+            startIndex: r.range.startIndex + candidate.offset,
+            endIndex: r.range.startIndex + candidate.offset + url.length },
             textStyle: { link: { url: url } }, fields: 'link' } });
         }
       }

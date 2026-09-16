@@ -1,8 +1,7 @@
 var Ai2sPipeline = (function () {
   'use strict';
   function process(io, responseId, eventEmail) {
-    Ai2sSafety.id(responseId);
-    var key = 'response:' + responseId, binding, member, memberKey;
+    var key, binding, member, memberKey;
     function putBinding() { io.put(key, binding); }
     function block(reason) {
       binding.blocked = reason;
@@ -22,6 +21,8 @@ var Ai2sPipeline = (function () {
         answers: response.answers, updatedAt: response.updatedAt }));
     }
     try {
+      Ai2sSafety.id(responseId);
+      key = 'response:' + responseId;
       binding = io.get(key);
       if (binding && binding.blocked) Ai2sSafety.fail(binding.blocked);
       var response = current();
@@ -40,6 +41,12 @@ var Ai2sPipeline = (function () {
       memberKey = 'member:' + binding.email;
       member = io.get(memberKey);
       if (member && member.responseId !== responseId) block('DUPLICATE_MEMBER_RESPONSE');
+      if (member && (member.status === 'complete' || member.fingerprint || member.tabs || member.updatedAt) &&
+          (!member.file || !member.file.id)) {
+        // Persist a sticky block before the error handler changes status. Missing history
+        // must never become authorization for a new copy on the next retry.
+        block('REGISTER_CORRUPT');
+      }
       if (!member) {
         member = { responseId: responseId, status: 'pending' };
         io.put(memberKey, member);

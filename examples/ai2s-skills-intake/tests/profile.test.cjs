@@ -152,7 +152,14 @@ test('respondent text is data and references remain unverified text', () => {
   assert.ok(actual.paragraphs.some((p) => p.text === 'Example (self-reported): ' + answers.strength1Example));
   assert.ok(actual.paragraphs.some((p) => p.text ===
     'Project, portfolio, or other link (unverified): javascript:alert(1)'));
-  assert.ok(actual.paragraphs.every((p) => Object.keys(p).sort().join(',') === 'style,text'));
+  const candidates = actual.paragraphs.filter((p) => p.linkCandidate);
+  assert.equal(candidates.length, 1);
+  assert.deepEqual(Object.keys(candidates[0]).sort(), ['linkCandidate', 'style', 'text']);
+  assert.deepEqual(Object.keys(candidates[0].linkCandidate).sort(), ['offset', 'url']);
+  assert.equal(candidates[0].linkCandidate.url, answers.evidenceLink);
+  assert.equal(candidates[0].text.slice(candidates[0].linkCandidate.offset), answers.evidenceLink);
+  assert.ok(actual.paragraphs.filter((p) => !p.linkCandidate)
+    .every((p) => Object.keys(p).sort().join(',') === 'style,text'));
 });
 
 test('output is deterministic and records the supplied response time in UTC', () => {

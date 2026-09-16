@@ -65,6 +65,13 @@ var Ai2sProfile = (function () {
     }
     add('HEADING_1', 'Respondent-supplied reference');
     field('Project, portfolio, or other link (unverified)', a.evidenceLink);
+    var reference = text(a.evidenceLink);
+    if (reference) {
+      var referenceParagraph = paragraphs[paragraphs.length - 1];
+      referenceParagraph.linkCandidate = {
+        url: reference, offset: referenceParagraph.text.length - reference.length
+      };
+    }
     if (a.moreDetail === 'Add detail' && a.technicalDetail === 'Add technical detail') {
       add('HEADING_1', 'Optional technical details');
       list('Reported areas', a.technicalAreas);

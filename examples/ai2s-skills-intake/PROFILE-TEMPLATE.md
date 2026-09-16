@@ -40,7 +40,10 @@ never remain in a populated member profile. Member notes is not part of that rep
 The adapter must insert respondent content as plain text, never as a template,
 formula, request object or script. It may add clickable links only after validating
 an explicit `https:` or `http:` URL; other supplied references remain literal text.
-The pure mapper never constructs a link operation. Operational email keys, response
+The mapper supplies a structured `linkCandidate` (literal URL and offset within its
+paragraph) only for the evidence-reference answer. The adapter checks that the marked
+text matches the URL and validates its protocol before constructing a link operation;
+it does not identify links by matching English display labels. Operational email keys, response
 IDs and edit-response links are not profile fields.
 
 Use Arial 11 pt body text, 1.15 line spacing and paragraph spacing for readability.
