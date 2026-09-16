@@ -49,6 +49,7 @@ model fallback. Verify account availability with the [Opus setup guidance](docs/
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
+# Install Node.js 24 LTS for the opt-in example's repository checks.
 make check
 python3 scripts/agentic/workflow.py doctor
 ```
@@ -56,6 +57,11 @@ python3 scripts/agentic/workflow.py doctor
 Runtime: Linux/macOS, Python 3.12+, Git, GNU Make, `gh`, `codex`, and `copilot`. The portable
 workflow test suite uses only the Python standard library and Git. CI needs no model
 credentials. Windows users should use WSL; local operation locks use POSIX `flock`.
+
+Repository development also uses Node.js 24 for the dependency-free
+[AI2S skills intake example](examples/ai2s-skills-intake/README.md). Run its tests with
+`make test-ai2s` (or `make test-ai2s NODE=/path/to/node`). The portable workflow
+installer excludes the example and its repository-only Node.js CI setup.
 
 ## Invoke the workflow
 

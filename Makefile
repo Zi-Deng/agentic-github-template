@@ -1,8 +1,9 @@
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 RUFF ?= .venv/bin/ruff
+NODE ?= node
 
-.PHONY: check test lint check-clean
-check: lint test
+.PHONY: check test test-ai2s lint check-clean
+check: lint test test-ai2s
 	$(PYTHON) scripts/check_repository.py
 
 lint:
@@ -11,6 +12,10 @@ lint:
 
 test:
 	$(PYTHON) -B scripts/agentic/check.py
+
+test-ai2s:
+	$(NODE) -e 'if (process.versions.node.split(".")[0] !== "24") { console.error("AI2S tests require Node.js 24"); process.exit(1); }'
+	$(NODE) --test examples/ai2s-skills-intake/tests/*.test.cjs
 
 check-clean:
 	git diff --check

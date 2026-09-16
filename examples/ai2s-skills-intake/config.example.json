@@ -1,0 +1,7 @@
+{
+  "ownerEmail": "",
+  "coordinatorEmails": [],
+  "privateRootId": "",
+  "teamReaders": [{ "type": "group", "email": "" }],
+  "responders": [{ "type": "group", "email": "" }]
+}

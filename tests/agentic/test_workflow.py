@@ -285,6 +285,38 @@ class WorktreeTests(GitFixture):
 
 
 class ReviewTests(GitFixture):
+    def test_apps_script_commonjs_snapshot_preserves_text_and_exclusion_boundaries(self):
+        contents = {
+            "example.gs": "const title = 'Skills — self-report';\n",
+            "test.cjs": "require('node:test');\n",
+        }
+        for name, text in contents.items():
+            (self.root / name).write_text(text, encoding="utf-8")
+        (self.root / "invalid.gs").write_bytes(b"\xff")
+        (self.root / "binary.cjs").write_bytes(b"a\0b")
+        (self.root / "large.gs").write_text("x" * 101)
+        (self.root / "linked.cjs").symlink_to("test.cjs")
+        (self.root / "memory").mkdir()
+        (self.root / "memory/private.gs").write_text("private synthetic fixture")
+        git(self.root, "add", "-f", ".")
+        git(self.root, "commit", "-m", "script snapshot fixtures")
+        head = git(self.root, "rev-parse", "HEAD")
+        limits = {**workflow.configuration(self.root), "max_source_file_bytes": 100}
+        output = self.parent / "snapshot"
+        index = {item["path"]: item for item in review.snapshot(self.repo, head, output, limits)}
+        for name, text in contents.items():
+            self.assertIn("snapshot", index[name])
+            target = output / Path(index[name]["snapshot"]).name
+            self.assertEqual(target.read_bytes(), text.encode("utf-8"))
+            self.assertEqual(target.suffix, ".txt")
+        for name in ["invalid.gs", "binary.cjs"]:
+            self.assertEqual(index[name]["omitted"], "not UTF-8 text")
+        self.assertEqual(index["large.gs"]["omitted"], "file exceeds configured size limit")
+        self.assertEqual(index["memory/private.gs"]["omitted"], "private/data path excluded")
+        self.assertIn("symlink", index["linked.cjs"]["omitted"])
+        with self.assertRaisesRegex(workflow.WorkflowError, "exceeds budget"):
+            review.snapshot(self.repo, head, self.parent / "tiny", {**limits, "max_snapshot_bytes": 1})
+
     def packet(self):
         self.commit_task()
         return review.prepare(self.repo, 31, 12, 1234)
@@ -459,6 +491,9 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(result["new_files"], [])
             self.assertFalse((target / "memory").exists())
             self.assertFalse((target / "README.md").exists())
+            self.assertFalse((target / "examples").exists())
+            self.assertFalse((target / "Makefile").exists())
+            self.assertFalse((target / ".github/workflows/ci.yml").exists())
             self.assertTrue((target / "scripts/agentic/workflow.py").exists())
             self.assertTrue((target / "scripts/finish-task.sh").exists())
             self.assertEqual(len(list((target / ".agents/skills").glob("*/SKILL.md"))), 8)
