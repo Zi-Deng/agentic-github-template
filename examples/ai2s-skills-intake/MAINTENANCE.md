@@ -16,6 +16,7 @@ as a troubleshooting shortcut. The journals hold the identity of existing profil
 | `ai2sRetry` | Same behavior as reconciliation; it cannot bypass pause or identity conflicts |
 | `ai2sPause` | Persist pause first, then remove this owner's two processing handlers; preserve all assets, responses and unrelated triggers |
 | `ai2sRecover` | Apply one explicit recovery request from `AI2S_RECOVERY`, while paused |
+| `ai2sUpdateAccess` | While paused, verify the owner's manually added reader/responder access and persist the new lists without Google writes |
 | `ai2sOnSubmit` | Installed Forms event handler; do not call it manually to claim a real trigger test |
 
 Pausing stops processing, **not response collection**. The owner may separately stop
@@ -63,7 +64,8 @@ or infer that a missing response means its profile should be deleted.
 | --- | --- |
 | `CONFIG_REQUIRED`, `INVALID_EMAIL`, `CONFIG_DUPLICATE` | Check all private configuration values, primary account emails and explicit principal lists |
 | `OWNER_REQUIRED`, `ASSET_OWNERSHIP` | Use the designated owner; inspect ownership/Shared Drive placement, preserving assets |
-| `CONFIG_CHANGED` | Restore the recorded configuration or plan a deliberate migration; pause remains available |
+| `CONFIG_CHANGED` | Restore original `AI2S_CONFIG`; use the paused access-update procedure for reader/responder additions. Other changes need a deliberate migration; pause remains available |
+| `ACCESS_UPDATE_REQUIRED`, `ACCESS_REMOVAL_UNSUPPORTED` | Supply exactly the two access lists, retaining every current principal. This operation does not change ownership, destinations, coordinators or remove access |
 | `UNEXPECTED_ACCESS`, `MISSING_ACCESS`, `SHARING_ENABLED`, `RESPONDER_ACCESS`, `UNEXPECTED_PARENT` | Inspect actual asset and ancestor ACLs/placement; restore only approved access or location; then validate |
 | `EMAIL_NOT_VERIFIED`, `FORM_SETTINGS`, `AUTO_SHEET_LINKED`, `FORM_NOT_PUBLISHED` | Restore documented Form settings/access; if email verification was disabled while accepting responses, pause and investigate those submissions before processing |
 | `FORM_DRIFT`, `ANSWER_DRIFT`, `REQUIRED_ANSWER_MISSING` | Inspect stable item IDs, questionnaire and current response; do not remap by matching titles |
@@ -160,6 +162,57 @@ Validate while paused, then reinstall triggers if the owner approves resuming th
 reviewed version. Content mapping changes require an explicit version/fingerprint
 migration if existing profiles need regeneration. Do not restore an old register over
 new live profiles or migrate responses implicitly.
+
+## Pilot-to-team access update
+
+Use this after pilot acceptance when adding explicit users or new group addresses.
+Changing membership of the same institutional groups does not change the script's
+configuration; pause, arrange the membership change, validate actual users' access,
+and resume. For additional addresses, the owner performs these steps:
+
+1. Run `ai2sPause`. Back up `AI2S_CONFIG`, `AI2S_STATE` and the restricted spreadsheet.
+   Keep the original `AI2S_CONFIG` unchanged. Read the current lists from `AI2S_STATE.access`
+   if present, otherwise from `AI2S_CONFIG`. Decide the additions explicitly.
+2. Save a Script Property **`AI2S_ACCESS_UPDATE`** containing exactly `teamReaders` and
+   `responders`, each a full nonempty array of `{ "type": "user" or "group", "email":
+   "owner-supplied address" }`. Retain every principal from the current lists and add
+   the approved users/groups. These have the same shape as the corresponding fields
+   in [config.example.json](config.example.json); no other fields are accepted.
+3. In Drive, add the new `teamReaders` to the **profiles folder** as Readers, with
+   notifications off. Allow those grants to propagate to existing profiles. In the
+   Form's responder sharing controls, add the new `responders` as Responders, with
+   invitations off. Do not change Form editor access, raw-data/template/private-root
+   permissions, or share unfinished profiles in the private root. Manual grants take
+   effect immediately, so perform this only after authorizing the recipients.
+4. Run **`ai2sUpdateAccess`**. It checks the effective owner, paused state, unchanged
+   private assets, actual responder/folder ACLs and every registered profile's access.
+   It issues only Google reads. Missing, broader or unexpected access blocks adoption;
+   resolve the discrepancy and rerun with the same request. Do not clear journals.
+5. On `access-updated`, processing remains paused. The new lists are saved as
+   `AI2S_STATE.access`, alongside the original asset IDs/journals, in one property write.
+   The original configuration digest remains unchanged. The request property is
+   removed after success. Subsequent validation and processing use the saved lists.
+   Back up the updated state and record the owner decision and actual access tests.
+6. Run `ai2sValidate`, check a previously created profile and its Member notes as the
+   intended users, then run `ai2sInstallTriggers`. Reconciliation retains existing
+   response ownership and profile URLs; it does not migrate or regenerate responses.
+
+An interrupted property write leaves either the old or new access lists; processing
+stays paused. Rerun `ai2sUpdateAccess` with the same request if it remains present;
+otherwise inspect `AI2S_STATE.access` and rerun validation. No step creates assets,
+sends invitations or grants access on the owner's behalf. During incomplete manual
+changes the ordinary validator may report access drift against the previous lists;
+the update function validates the proposed lists before adopting them. If abandoning
+an update before adoption, the owner must inspect and remove only its manual additions
+to restore the old access; the script does not revoke permissions automatically.
+
+The update supports additions only, including deployments using individual user lists
+without groups. Removals, role changes, coordinator/owner/destination changes and
+oversized configurations require a separately inspected migration. The existing
+8,500-byte state guard applies to the additional lists; use institution-managed groups
+for larger memberships. Never delete state, overwrite it with a stale backup, or edit
+its digest to bypass validation. Rollback to older code must account for this access
+overlay before resuming; older code does not understand the new lists.
 
 Ownership/trigger-creator changes require a planned handoff: pause under the old owner,
 preserve private state, inspect asset/Cloud-project ownership and group access, and

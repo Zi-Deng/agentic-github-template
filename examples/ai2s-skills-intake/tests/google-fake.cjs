@@ -186,6 +186,8 @@ function createFake() {
           if (form.items.some((i) => i.itemId === r.createItem.item.itemId)) return { errorStatus: 400 };
           form.items.splice(r.createItem.location.index, 0, r.createItem.item);
         } else if (r.updateItem) {
+          assert.deepEqual(Object.keys(r.updateItem).sort(), ['item', 'location', 'updateMask']);
+          assert.equal(r.updateItem.updateMask, '*');
           assert.equal(form.items[r.updateItem.location.index].itemId, r.updateItem.item.itemId);
           const q = r.updateItem.item.questionItem?.question?.choiceQuestion;
           for (const o of q?.options || []) {

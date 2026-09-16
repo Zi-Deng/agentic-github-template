@@ -13,6 +13,11 @@ var Ai2sApp = (function () {
     if (Ai2sSafety.email(Session.getEffectiveUser().getEmail()) !== c.ownerEmail) Ai2sSafety.fail('OWNER_REQUIRED');
     var io = Ai2sGoogle.connection(c, state), digest = io.hash(Ai2sSafety.canonical(c));
     if (state.configDigest && state.configDigest !== digest) Ai2sSafety.fail('CONFIG_CHANGED');
+    // Keep the original deployment seal. Only the owner-validated access overlay may vary.
+    if (state.access !== undefined) {
+      c = Ai2sSafety.withAccess(c, state.access);
+      io = Ai2sGoogle.connection(c, state);
+    }
     function save() {
       var json = JSON.stringify(state);
       if (Utilities.newBlob(json).getBytes().length > 8500) Ai2sSafety.fail('STATE_TOO_LARGE');
@@ -75,7 +80,7 @@ var Ai2sApp = (function () {
     observed = formRead(x);
     // All page IDs now exist, including forward destinations for multiple-choice routing.
     var updates = compiled.items.map(function (item, i) {
-      return { updateItem: { item: item, location: { index: i }, fields: '*' } };
+      return { updateItem: { item: item, location: { index: i }, updateMask: '*' } };
     });
     updates.push({ updateSettings: { settings: { emailCollectionType: 'VERIFIED' },
       updateMask: 'emailCollectionType' } });
@@ -95,9 +100,30 @@ var Ai2sApp = (function () {
     var ids = Ai2sDocuments.identify(doc);
     var contents = {
       profile: [
-        { style: 'TITLE', text: 'AI2S member profile' },
-        { style: 'SUBTITLE', text: 'Self-reported' },
-        { style: 'NORMAL_TEXT', text: 'A member response populates this Profile tab.' }
+        { style: 'TITLE', text: 'AI2S member profile — template' },
+        { style: 'SUBTITLE', text: 'Self-reported profile outline' },
+        { style: 'NORMAL_TEXT', text: 'Template guidance: the intake replaces this outline with the member’s ' +
+          'own answers. Missing answers mean not reported; no expertise score or inferred skills.' },
+        { style: 'NORMAL_TEXT', text: 'Name; Role or main area of work; Last response update (UTC): [From intake]' },
+        { style: 'HEADING_1', text: 'Contribution overview' },
+        { style: 'NORMAL_TEXT', text: 'Could contribute to: [From intake, including Other]' },
+        { style: 'HEADING_1', text: 'Named strengths' },
+        { style: 'HEADING_2', text: 'Core strength: [From intake]' },
+        { style: 'NORMAL_TEXT', text: 'Self-described experience; Last used; Evidence context (self-reported); ' +
+          'Example (self-reported): [From intake]' },
+        { style: 'HEADING_2', text: 'Additional strengths (up to two, optional)' },
+        { style: 'NORMAL_TEXT', text: 'Self-named strength; experience; recency; example: [From intake]' },
+        { style: 'HEADING_1', text: 'Respondent-supplied reference' },
+        { style: 'NORMAL_TEXT', text: 'Project, portfolio, or other link: [From intake]. References are not independently verified.' },
+        { style: 'HEADING_1', text: 'Optional technical details' },
+        { style: 'NORMAL_TEXT', text: 'Reported areas; Reported activities; Reported tools; Additional context: ' +
+          '[From intake]. Categories do not imply proficiency.' },
+        { style: 'HEADING_1', text: 'Learning interests' },
+        { style: 'NORMAL_TEXT', text: 'Would like to learn: [From intake]; separate from reported experience.' },
+        { style: 'HEADING_1', text: 'Collaboration preferences' },
+        { style: 'NORMAL_TEXT', text: 'Preferred ways to collaborate: [From intake]. No availability commitment is implied.' },
+        { style: 'NORMAL_TEXT', text: 'Template guidance: use Member notes for durable additions and corrections. ' +
+          'Both tabs are readable by the team.' }
       ],
       notes: [
         { style: 'TITLE', text: 'Member notes' },
@@ -179,7 +205,9 @@ var Ai2sApp = (function () {
       });
       var expected = c.responders.map(function (p) { return p.type + ':' + p.email; }).sort();
       var actual = published.map(function (p) {
-        if (p.role !== 'publishedReader' || p.deleted || p.expirationTime) Ai2sSafety.fail('RESPONDER_ACCESS');
+        var responder = (p.role === 'reader' && p.view === 'published') ||
+          (p.role === 'publishedReader' && (!p.view || p.view === 'published'));
+        if (!responder || p.deleted || p.expirationTime || p.pendingOwner) Ai2sSafety.fail('RESPONDER_ACCESS');
         return p.type + ':' + (p.emailAddress || '').toLowerCase();
       }).sort();
       if (Ai2sSafety.canonical(expected) !== Ai2sSafety.canonical(actual)) Ai2sSafety.fail('RESPONDER_ACCESS');
@@ -301,7 +329,31 @@ var Ai2sApp = (function () {
       return { status: 'recovered', processing: 'paused' };
     });
   }
+  function updateAccess() {
+    return locked(function () {
+      var x = context(), request;
+      if (!x.state.paused) Ai2sSafety.fail('PAUSE_REQUIRED');
+      try { request = JSON.parse(x.properties.getProperty('AI2S_ACCESS_UPDATE') || 'null'); }
+      catch (_) { Ai2sSafety.fail('ACCESS_UPDATE_REQUIRED'); }
+      var target = Ai2sSafety.withAccess(x.c, request);
+      ['teamReaders', 'responders'].forEach(function (key) {
+        // Rollout may add explicit readers/responders; removal is a separate access review.
+        if (x.c[key].some(function (old) { return !target[key].some(function (p) {
+          return p.type === old.type && p.email === old.email;
+        }); })) Ai2sSafety.fail('ACCESS_REMOVAL_UNSUPPORTED');
+      });
+      var proposed = { c: target, state: x.state, io: Ai2sGoogle.connection(target, x.state) };
+      // Read back the owner's manual grants. No ACL, asset, response or document writes here.
+      validate(proposed, true);
+      proposed.io.auditMembers();
+      x.state.access = { teamReaders: target.teamReaders, responders: target.responders };
+      x.save(); // One atomic property holds the overlay together with all original IDs/journals.
+      x.properties.deleteProperty('AI2S_ACCESS_UPDATE');
+      return { status: 'access-updated', processing: 'paused' };
+    });
+  }
   return { setup: setup, install: install, pause: pause, run: run, recover: recover,
+    updateAccess: updateAccess,
     locked: locked, context: context, validate: validate, status: status };
 }());
 
@@ -313,6 +365,7 @@ function ai2sPause() { return Ai2sApp.pause(); }
 function ai2sReconcile() { return Ai2sApp.run(); }
 function ai2sRetry() { return Ai2sApp.run(); }
 function ai2sRecover() { return Ai2sApp.recover(); }
+function ai2sUpdateAccess() { return Ai2sApp.updateAccess(); }
 function ai2sOnSubmit(event) {
   if (!event || !event.response || !event.source) return { status: 'blocked', code: 'EVENT_REQUIRED' };
   try { return Ai2sApp.run(event.response.getId(), event.response.getRespondentEmail(), event.source.getId()); }

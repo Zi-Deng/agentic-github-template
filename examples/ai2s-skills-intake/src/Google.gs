@@ -235,6 +235,14 @@ var Ai2sGoogle = (function () {
     };
     io.put = function (key, value) { put('Register', key, value); };
     io.raw = function (response) { put('Responses', response.id, response); };
+    io.auditMembers = function () {
+      rows('Register').forEach(function (row) {
+        if (typeof row[0] !== 'string' || row[0].indexOf('member:') !== 0) return;
+        var email = Ai2sSafety.email(row[0].slice(7)), member = io.get(row[0]);
+        if (member.status === 'complete' && (!member.file || !member.file.id)) Ai2sSafety.fail('REGISTER_CORRUPT');
+        if (member.file && member.file.id) io.auditProfile(member.file.id, email, member.status === 'complete');
+      });
+    };
     return io;
   }
   return { request: request, all: all, file: file, permissions: permissions, owned: owned,

@@ -30,6 +30,7 @@ expertise score nor interprets an unchecked option as a lack of skill.
 | [Configuration example](config.example.json) and [manifest](appsscript.json) | Blank identities and explicit OAuth/runtime configuration |
 | [Integration tests](tests/pipeline.test.cjs) | Real entrypoints/adapters against a synthetic API model |
 | [API contract tests](tests/contracts.test.cjs) | IDs, permissions, revisions, pagination, literal values and error boundaries |
+| [Repair regressions](tests/repairs.test.cjs) | Forms request schema, responder views, native outline and paused rollout |
 
 ## Development
 
@@ -71,7 +72,8 @@ minutes. Timing and institutional access are pending, not implied by the fixture
 
 ## Implementation boundaries
 
-`App.gs` owns locked operations and deployment checks. `Google.gs` makes allowlisted
+`App.gs` owns locked operations, deployment checks and paused adoption of owner-applied
+reader/responder additions. `Google.gs` makes allowlisted
 Google REST calls and writes operational Sheet cells with `valueInputOption=RAW`.
 `FormSchema.gs` persists stable item/question IDs and maps responses without titles or
 column positions. `Pipeline.gs` binds response ownership, rereads current responses,

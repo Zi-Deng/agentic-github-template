@@ -13,6 +13,12 @@ security boundary. [Documents.gs](src/Documents.gs) implements targeted updates;
 
 ## Profile tab
 
+Setup initializes a styled, reusable outline with all sections below, including the
+optional strengths and technical fields. Clearly marked template guidance and
+`[From intake]` prompts let the owner review the native structure before collecting
+responses. Profile generation replaces the entire generated tab, so those prompts
+never remain in a populated member profile. Member notes is not part of that replacement.
+
 [Profile.gs](src/Profile.gs) emits paragraphs with native Docs named styles (`TITLE`,
 `SUBTITLE`, `HEADING_1`, `HEADING_2`, `NORMAL_TEXT`) in this order:
 
@@ -61,8 +67,9 @@ retry from a fresh document read.
 
 ## Pending live template checks
 
-Inspect the real template and output for tab names and IDs, readable headings,
-reasonable pagination, no leftover template placeholders, and valid supplied links.
+Inspect the real template for the full outline and readable headings. Inspect generated
+output for correct tab names/IDs, reasonable pagination, no leftover template guidance
+or placeholders, and valid supplied links.
 Add styled text and a table to Member notes, edit a Form response, then confirm the
 same profile URL and unchanged notes/formatting. Local mapping tests do not prove
 that the Google Docs adapter or live access boundaries work.

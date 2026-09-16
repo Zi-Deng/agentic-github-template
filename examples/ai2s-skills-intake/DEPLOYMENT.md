@@ -30,7 +30,9 @@ folder or have the owner inspect and fix the access deliberately.
 Use institution-managed groups whose membership the owner can verify. For the pilot,
 these configured groups should contain only the intended pilot participants. After
 successful acceptance, the institutional group administrator may expand the same
-groups to the authorized AI2S membership. The code checks the configured group's
+groups to the authorized AI2S membership. Explicit user lists can expand through the
+paused [access-update procedure](MAINTENANCE.md#pilot-to-team-access-update), preserving
+existing assets and response bindings. The code checks the configured group's
 file role, not group membership, nesting or institutional sharing rules. Record those
 checks privately. Choose direct user lists when that better matches institutional policy.
 
@@ -115,6 +117,10 @@ and processing stays paused.
    the pilot Form and enable acceptance of responses. Publishing and responder access
    are separate controls; see [Google's publishing instructions](https://support.google.com/docs/answer/2839588?hl=en).
    The validator requires the actual published ACL to match the configuration exactly.
+   At the REST boundary, `role: reader` with `view: published` grants responder-only
+   access; an ordinary file reader is not accepted in its place. See
+   [Google's responder API guide](https://developers.google.com/workspace/forms/api/guides/publish-form)
+   and [Drive's view-scoped roles](https://developers.google.com/workspace/drive/api/guides/ref-roles#views).
 5. Inspect asset sharing: the owner/coordinators alone administer the Form, raw Sheet
    and template. The profiles folder adds configured team readers. New profile copies
    are initially in the private folder, populated, and only then shared and moved to
@@ -127,11 +133,16 @@ and processing stays paused.
    submission**. Apps Script documents that programmatic `FormResponse.submit()` does
    not fire the submission trigger. Triggers execute as their creator; only the owner
    should install them. [Installable trigger restrictions](https://developers.google.com/apps-script/guides/triggers/installable)
-8. After the user-arranged pilot succeeds, have the owner apply the authorized AI2S
-   memberships to the configured responder/reader groups. Recheck actual access as
-   separate users, run `ai2sValidate`, and record the scope change in the private record.
-   Changing the configured addresses/root/owner requires a separately inspected
-   migration; a digest prevents silent repointing of an existing deployment.
+8. After the user-arranged pilot succeeds, run `ai2sPause`. For the same configured
+   groups, have the institutional administrator apply the authorized AI2S memberships.
+   For additional group addresses or individual users, follow the paused
+   [access-update procedure](MAINTENANCE.md#pilot-to-team-access-update). This reads back
+   the owner's explicit grants before adopting the new reader/responder lists, without
+   replacing assets or response bindings. Recheck actual access as separate users,
+   run `ai2sValidate`, record the change privately, then run `ai2sInstallTriggers`.
+   Keep `AI2S_CONFIG` unchanged: its digest still protects the original deployment.
+   Owner/root/coordinator changes and access removals require a separately inspected
+   migration; never delete state to change access.
 
 If institution policy rejects authorization, API enablement, group resolution or
 sharing, leave processing paused and preserve the assets. Record the safe error code,

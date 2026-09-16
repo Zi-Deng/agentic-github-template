@@ -58,6 +58,11 @@ var Ai2sSafety = (function () {
     allowed['user:' + c.ownerEmail] = 'owner';
     return allowed;
   }
+  function withAccess(c, access) {
+    if (!access || typeof access !== 'object' || Array.isArray(access) ||
+        Object.keys(access).sort().join(',') !== 'responders,teamReaders') fail('ACCESS_UPDATE_REQUIRED');
+    return config(Object.assign({}, c, { teamReaders: access.teamReaders, responders: access.responders }));
+  }
   function permissions(actual, allowed, requireAll) {
     var seen = {};
     actual.forEach(function (p) {
@@ -75,5 +80,5 @@ var Ai2sSafety = (function () {
     }
   }
   return { fail: fail, code: code, email: email, id: id, canonical: canonical,
-    config: config, roles: roles, permissions: permissions };
+    config: config, withAccess: withAccess, roles: roles, permissions: permissions };
 }());

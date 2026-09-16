@@ -24,7 +24,8 @@ location before testing. No entry below may be marked pass from a mock or unit t
 | Raw response boundary | Team/member account cannot read Form responses, raw Sheet, register or private template; coordinator can administer them | Pending |
 | Unaffiliated user | A user outside configured groups/lists cannot view profiles or submit the restricted Form | Pending |
 | Group membership | Institutional administrator verifies direct/nested membership, account lifecycle and intended pilot/AI2S scope | Pending |
-| Content and layout | Read actual template/profile tabs, headings, evidence labels, recency and interests; valid supplied links; no template placeholders; typical core near two pages | Pending |
+| Pilot-to-team rollout | Owner pauses, applies approved additional readers/responders, adopts them through `ai2sUpdateAccess`, verifies the same profile URL/notes and restricted raw access, and resumes | Pending |
+| Content and layout | Read the full template outline and actual profile tabs, headings, evidence labels, recency and interests; valid supplied links; no template guidance left in generated profiles; typical core near two pages | Pending |
 | Trigger continuity | Owner-created submission trigger and 15-minute reconciliation trigger observed; no claim of an exact delivery deadline | Pending |
 
 Use **browser submissions**, not `FormResponse.submit()`, to verify submission-trigger
