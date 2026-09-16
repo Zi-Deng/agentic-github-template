@@ -3,7 +3,8 @@
 The reusable template and each member document must have two native document tabs.
 Google Docs permissions apply to the entire document: members edit their own document,
 and team readers can read both tabs. Tab separation is an automation rule, not a
-security boundary. The Google adapter is pending at this checkpoint.
+security boundary. [Documents.gs](src/Documents.gs) implements targeted updates;
+[App.gs](src/App.gs) creates and initializes the template.
 
 | Tab | Contents | Automated changes |
 | --- | --- | --- |
