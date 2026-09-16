@@ -1,0 +1,105 @@
+[
+  {
+    "case": "accountant",
+    "answers": {
+      "name": "Alex Example",
+      "role": "Research accountant",
+      "strength1": "Grant budget reconciliation",
+      "strength1Experience": "Can adapt or design approaches for unfamiliar situations.",
+      "strength1Recency": "Within six months",
+      "strength1Evidence": "Ongoing operational work",
+      "strength1Example": "Reconciled a synthetic multi-year grant budget and explained the variance.",
+      "contributions": ["Finance, grants, procurement, and administration"],
+      "collaboration": ["Contributing", "Learning alongside someone"],
+      "learning": ["AI fundamentals"],
+      "moreDetail": "Finish core",
+      "visibility": "I understand my profile is readable by the AI2S team."
+    }
+  },
+  {
+    "case": "cv",
+    "answers": {
+      "name": "Blair Example",
+      "role": "Computer vision researcher",
+      "strength1": "Image segmentation",
+      "strength1Experience": "Can apply them independently in familiar situations.",
+      "strength1Recency": "Six–24 months ago",
+      "strength1Evidence": "Work/research project",
+      "strength1Example": "Compared segmentation errors on synthetic microscopy images.",
+      "contributions": ["AI/model research and development"],
+      "evidenceLink": "https://example.org/synthetic-segmentation",
+      "moreDetail": "Add detail",
+      "technicalDetail": "Add technical detail",
+      "technicalAreas": ["Images/video"],
+      "technicalActivities": ["Evaluation/calibration/robustness"],
+      "tools": "Python, PyTorch, OpenCV",
+      "learning": ["Responsible AI"],
+      "visibility": "I understand my profile is readable by the AI2S team."
+    }
+  },
+  {
+    "case": "nlp",
+    "answers": {
+      "name": "Casey Example",
+      "role": "Language technology researcher",
+      "strength1": "Multilingual retrieval evaluation",
+      "strength1Experience": "Have applied them with guidance.",
+      "strength1Recency": "Within six months",
+      "strength1Evidence": "Personal practice or prototype",
+      "strength1Example": "Built a synthetic multilingual retrieval benchmark with mentor feedback.",
+      "moreDetail": "Add detail",
+      "strength2": "Plain-language research communication",
+      "strength2Experience": "Can apply them independently in familiar situations.",
+      "strength2Recency": "Within six months",
+      "strength2Example": "Presented the benchmark limitations to a mixed-background group.",
+      "technicalDetail": "Add technical detail",
+      "technicalAreas": ["Language/LLMs", "Search/recommendations"],
+      "technicalActivities": ["Retrieval/RAG", "Experimentation"],
+      "tools": "Python, spaCy",
+      "collaboration": ["Learning alongside someone"],
+      "visibility": "I understand my profile is readable by the AI2S team."
+    }
+  },
+  {
+    "case": "mlops",
+    "answers": {
+      "name": "Devon Example",
+      "role": "Platform engineer",
+      "strength1": "Model deployment incident response",
+      "strength1Experience": "Can adapt or design approaches for unfamiliar situations.",
+      "strength1Recency": "Within six months",
+      "strength1Evidence": "Ongoing operational work",
+      "strength1Example": "Rehearsed a rollback after an intentionally degraded synthetic deployment.",
+      "contributions": ["Deployment and operations", "Software and data engineering"],
+      "moreDetail": "Add detail",
+      "technicalDetail": "Add technical detail",
+      "technicalActivities": ["Deployment/monitoring", "Reproducibility"],
+      "tools": "Kubernetes, Terraform, Prometheus",
+      "collaboration": ["Reviewing/advising", "Mentoring"],
+      "visibility": "I understand my profile is readable by the AI2S team."
+    }
+  },
+  {
+    "case": "unlisted-specialty",
+    "answers": {
+      "name": "Emery Example",
+      "role": "Community language archivist",
+      "strength1": "Participatory oral-history archiving",
+      "strength1Experience": "Can apply them independently in familiar situations.",
+      "strength1Recency": "More than two years ago",
+      "strength1Evidence": "Work/research project",
+      "strength1Example": "Co-designed a synthetic archive consent and access protocol.",
+      "contributions": ["Community stewardship of oral histories"],
+      "learning": ["Long-term preservation of sign-language archives"],
+      "moreDetail": "Add detail",
+      "strength3": "Tactile exhibition interpretation",
+      "strength3Experience": "Have applied them with guidance.",
+      "strength3Recency": "Six–24 months ago",
+      "technicalDetail": "Add technical detail",
+      "technicalAreas": ["Handwriting restoration"],
+      "technicalActivities": ["Community-defined archive quality checks"],
+      "additionalContext": "Specialist language work spans community and technical practice.",
+      "visibility": "I understand my profile is readable by the AI2S team."
+    }
+  }
+]
