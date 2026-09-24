@@ -243,6 +243,12 @@ class PipelineTests(PipelineFixture):
         with patch.object(review, "review", side_effect=self.model_double):
             with self.assertRaisesRegex(workflow.WorkflowError, "implementer family"):
                 pipeline.review_task(self.repo, 12, execute=True)
+            # An allowance recorded for the profile's own (codex) pairing does not transfer
+            # to this task's pinned Claude implementer.
+            profiles.use_profile(self.repo, "astra-claude", allow_same_family=True, reason="other pairing")
+            with self.assertRaisesRegex(workflow.WorkflowError, "implementer family"):
+                pipeline.review_task(self.repo, 12, execute=True)
+            profiles.clear_profile(self.repo)
             self.assertEqual(self.model_runs, 0)
             stderr = io.StringIO()
             with contextlib.redirect_stderr(stderr):
@@ -255,6 +261,21 @@ class PipelineTests(PipelineFixture):
         meta = json.loads((Path(result["directory"]) / "metadata.json").read_text())
         self.assertTrue(meta["provenance"]["same_family"])
         self.assertEqual(meta["provenance"]["implementer"]["family"], "anthropic")
+
+    def test_round_without_reviewer_model_trusts_its_own_packet(self):
+        with patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}):
+            with patch.object(review, "review", side_effect=self.model_double):
+                result = pipeline.review_task(self.repo, 12, execute=True, publish=True)
+        store = tasks.TaskStore(self.repo)
+        with store.locked("issue-12") as state:
+            for field in ("reviewer_model", "reviewer_backend", "reviewer_family", "profile"):
+                state["review_rounds"][-1].pop(field, None)
+            store.save(state)
+        with contextlib.redirect_stderr(io.StringIO()):
+            verified = pipeline.validate_designated(self.repo, store.read("issue-12"))
+        self.assertEqual(verified["review"]["commit_id"], self.head)
+        meta = json.loads((Path(result["directory"]) / "metadata.json").read_text())
+        self.assertEqual(meta["requested_model"], "gpt-6-astra")
 
     def test_prepared_round_for_another_reviewer_needs_fresh(self):
         prepared = pipeline.review_task(self.repo, 12)

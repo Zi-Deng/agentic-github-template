@@ -15,9 +15,10 @@ from workflow import WorkflowError, configuration, run
 ENV_NAME = "AGENTIC_PROFILE"
 LOCAL_FILE = ".agentic-local/profile.json"
 LEGACY_NAME = "legacy"
-LEGACY_IMPLEMENTER = {"backend": "codex", "model": "gpt-6-astra"}
-LEGACY_REVIEWER_MODEL = "claude-opus-5"
+# Records that predate profiles ran Codex; their model was never recorded, so it stays unknown.
+LEGACY_BACKEND = "codex"
 FAMILIES = {"gpt": "openai", "claude": "anthropic"}
+BACKEND_FAMILIES = {"codex": "openai", "claude": "anthropic"}
 IMPLEMENTER_BACKENDS = ("codex", "claude")
 MODEL_PATTERNS = {
     "codex": r"gpt-[a-z0-9.-]+",
@@ -305,16 +306,32 @@ def clear_profile(repo):
 
 
 def pinned_executor(executor):
-    """The backend/model a task record is bound to; records that predate profiles mean Codex."""
+    """The backend (and model, when recorded) a task record is bound to.
+
+    Records that predate profiles ran Codex, but their model was never recorded, so the
+    pin carries ``model: None`` and only the backend participates in comparisons.
+    """
     if not isinstance(executor, dict):
         raise WorkflowError("Executor record is invalid")
     if "backend" not in executor:
-        return {**LEGACY_IMPLEMENTER, "profile": None, "legacy": True}
+        return {
+            "backend": LEGACY_BACKEND,
+            "model": None,
+            "family": BACKEND_FAMILIES[LEGACY_BACKEND],
+            "profile": None,
+            "legacy": True,
+        }
     backend, model = executor.get("backend"), executor.get("model")
     if backend not in IMPLEMENTER_BACKENDS:
         raise WorkflowError(f"Executor record names an unsupported backend {backend!r}")
     validate_model(backend, model)
-    return {"backend": backend, "model": model, "profile": executor.get("profile"), "legacy": False}
+    return {
+        "backend": backend,
+        "model": model,
+        "family": family(model),
+        "profile": executor.get("profile"),
+        "legacy": False,
+    }
 
 
 def show(repo, cfg=None):

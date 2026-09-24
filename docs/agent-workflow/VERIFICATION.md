@@ -287,13 +287,68 @@ registered worktree `issue-10-dual-profile`, created from the clean control clon
   profile; the existing finish and pipeline tests pass with executor records that carry
   no backend pin, exercising the legacy fallback.
 
+### Live probes (2026-09-24, before merge)
+
+- **Copilot `gpt-6-astra` confirmed.** One prompt through the review wrapper's exact flag
+  set in a fresh `COPILOT_HOME` with `--max-ai-credits 30` returned `OK`; its `usage.json`
+  reports `modelMetrics: {"gpt-6-astra": …}`, one premium request. An earlier attempt with
+  `--max-ai-credits 1` was refused ("Use at least 30 AI credits"). The diagnostics
+  directory is private under `.agentic-local/diagnostics/`.
+- **Claude Code 2.1.281 probes** (disposable directory, subscription login, one turn each):
+  `-p --output-format stream-json` without `--verbose` exits 1 with
+  "requires --verbose"; with it, the first event is `system/init` carrying the
+  pre-assigned `session_id`, `permissionMode: dontAsk` and `model: claude-fable-5-1`, and
+  the last is `result/success` with `structured_output` matching the executor schema.
+  `--resume <id>` confirms the same `session_id` and returns a new `structured_output`.
+  Reusing `--session-id` for a new run exits 1 with "Session ID … is already in use". The
+  transcript appeared at `~/.claude/projects/<cwd slug>/<id>.jsonl` with `sessionId` and
+  `cwd` fields. `--tools Read,Edit,Write,Grep,Glob,Bash,NotebookEdit` limits
+  `system/init.tools` to that set plus `StructuredOutput`, which Claude Code adds for
+  `--json-schema` even when it is not listed; without the whitelist the default tool list
+  also exposed `Workflow`, `Skill`, `EnterWorktree`, `SendMessage` and scheduling tools,
+  which is why the executor now passes the whitelist and fails on any other tool. A prompt
+  delivered on stdin with no positional argument was accepted. In the task worktree,
+  `--setting-sources user,project` loaded `AGENTS.md` ("# Repository operating
+  instructions") with no `CLAUDE.md` present.
+
+- **Deny rules under `bypassPermissions`.** A probe with `--permission-mode
+  bypassPermissions --disallowedTools "Bash(echo *)"` had its `echo` denied and listed in
+  `permission_denials`, so the deny-list stays in force in the one-off bypass mode.
+
+### Independent review of head `19e635a`
+
+The [Opus review](https://github.com/Zi-Deng/agentic-github-template/pull/11#pullrequestreview-5309252458)
+ran through the existing `astra-claude` configuration (`usage.json` reports
+`claude-opus-5`, 15 premium requests, one attempted round). It found no P0/P1 defect, three
+P2 findings and five P3 findings, and disclosed that it did not read `skills.py`,
+`workflow.py`, `tasks.py`, `install.py`, `check_repository.py`, the Actions workflow or the
+tests. Dispositions, each with a regression:
+
+- F1 (P2, fixed): a record that predates profiles now pins only the backend; its model is
+  `None` and the active profile's model applies, instead of a template constant.
+- F2 (P2, fixed): a review round without `reviewer_model` is validated against its own
+  packet's recorded `requested_model`, with a note, instead of `claude-opus-5`.
+- F3 (P2, fixed): the Claude `system/init` event's `model` must equal the requested model
+  or the run fails; a missing field is recorded as `model_unconfirmed`.
+- F4 (P3, fixed): the standalone `review.py prepare` path records the active profile's
+  implementer as provenance, labelled as coming from the profile rather than a task record.
+- F5 (P3, fixed): a recorded profile-level same-family allowance applies only to the
+  profile's own declared implementer; any other pinned implementer needs the explicit flag.
+- F6 (P3, fixed): a missing recovery record raises a `WorkflowError` naming the path.
+- F7 (P3, fixed): on an output-budget overrun the chunk is persisted up to the budget before
+  the abort, so the bound on saved bytes holds and the forensic tail survives.
+- F8 (P3, fixed): the documentation states that only `SKILL.md` is mirrored.
+- Questions: deny rules do hold under `bypassPermissions` (probe above); `--resume`
+  keeps the same `session_id` (probe above); environment selection of a same-family profile
+  without a recorded allowance is intentionally refused; no other template constant reaches
+  an adopter-facing gate after F1/F2.
+
+The repaired head has not been independently reviewed. Under the one-attempted-round
+policy, a further round needs an explicit maintainer request; the maintainer decides
+whether to request it or to merge on the reviewed-head rule exception.
+
 ### Pending live evidence (post-merge)
 
-- One Copilot call with `--model gpt-6-astra` to confirm the CLI ID and the reported model
-  in `usage.json`.
-- Claude probes: `system/init` reports the pre-assigned `session_id` and `dontAsk`;
-  `--json-schema` yields `structured_output` on a fresh and a resumed run; OAuth works with
-  `--setting-sources user,project --strict-mcp-config`; AGENTS.md is loaded; the transcript
-  appears under `~/.claude/projects/`.
 - The `fable-gpt` pilot on the stale-worktree `doctor` warning issue, including the single
-  recorded `--containment bypass` run and the switch back to `astra-claude`.
+  recorded `--containment bypass` run, the same Claude session across implement and repair,
+  a published `gpt-6-astra` review, and the switch back to `astra-claude`.

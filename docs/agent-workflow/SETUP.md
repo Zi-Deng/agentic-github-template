@@ -128,8 +128,9 @@ load as an implicit `legacy` profile until you migrate them.
   trust dialog.
 - Keep `/.claude/settings.local.json` ignored (already in `.gitignore`); Claude Code writes
   it, and an untracked copy would make every coordinator command refuse a dirty checkout.
-- Skills: Claude Code discovers only `.claude/skills/`. `make sync-skills` mirrors them
-  byte for byte from `.agents/skills`, and `make check` fails on drift. Invoke a skill as
+- Skills: Claude Code discovers only `.claude/skills/`. `make sync-skills` copies each
+  `SKILL.md` byte for byte from `.agents/skills` (not the Codex-only `agents/openai.yaml`),
+  and `make check` fails on drift. Invoke a skill as
   `/agentic-workflow` instead of `$agentic-workflow`.
 - Transcripts live under `~/.claude/projects/<working directory with non-alphanumerics
   replaced by ->/<session-id>.jsonl`. The format is internal; the recovery command reads
@@ -138,7 +139,10 @@ load as an implicit `legacy` profile until you migrate them.
 ### Containment
 
 The managed Claude executor runs `claude -p --permission-mode dontAsk --permission-prompts
-none` with an allow-list (file tools; `git add`, `commit`, `diff`, `status`, `log`, `show`,
+none --tools Read,Edit,Write,Grep,Glob,Bash,NotebookEdit` (Claude Code adds
+`StructuredOutput` for the JSON result; any other tool in the session's tool list fails the
+run, which keeps skills, workflows, subagents, schedulers and messaging out of the executor)
+with an allow-list (file tools; `git add`, `commit`, `diff`, `status`, `log`, `show`,
 `rev-parse`, `ls-files`; `make`, `python3`, `pytest`, `ruff`; plus `allowed_tools_extra`
 from the profile) and a non-removable deny-list (`git push`, `gh`, `git merge`,
 `git worktree`, `git branch -D`, `rm -rf`, WebFetch, WebSearch, Agent, Task). Anything

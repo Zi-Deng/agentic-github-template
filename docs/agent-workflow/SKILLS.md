@@ -15,8 +15,8 @@ from `.agents/skills`, including when launched inside a task worktree. If newly 
 skills do not appear, restart the session. See [OpenAI's skills documentation](https://learn.chatgpt.com/docs/build-skills).
 
 In Claude Code, type `/agentic-<phase>`. Claude Code discovers only `.claude/skills/`,
-which `make sync-skills` mirrors byte for byte from `.agents/skills`; drift fails
-`make check`. An interactive Claude Code session prints `no CLAUDE.md found; AGENTS.md
+into which `make sync-skills` copies each `SKILL.md` byte for byte from `.agents/skills`
+(the Codex-only `agents/openai.yaml` metadata is not mirrored); drift fails `make check`. An interactive Claude Code session prints `no CLAUDE.md found; AGENTS.md
 loaded: …` at start, confirming that the shared instructions are in effect. See
 [Claude Code's skills documentation](https://code.claude.com/docs/en/skills).
 

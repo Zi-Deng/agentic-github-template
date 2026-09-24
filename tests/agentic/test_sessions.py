@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-from test_workflow import GitFixture, workflow
+from test_workflow import GitFixture, git, workflow
 
 # The shared fixture establishes the scripts import path.
 # isort: split
@@ -362,6 +362,24 @@ class LegacyPinTests(SessionTests):
                 self.invoke()
         self.assertEqual(len(self.model_calls), 1)
 
+    def test_legacy_pin_adopts_the_configured_codex_model_not_a_template_constant(self):
+        cfg = workflow.configuration(self.root)
+        cfg["profiles"]["astra-claude"]["implementer"]["model"] = "gpt-6-sol"
+        workflow.write_json(self.root / ".agentic/config.json", cfg)
+        git(self.root, "add", ".agentic/config.json")
+        git(self.root, "commit", "-m", "adopter model")
+        store = tasks.TaskStore(self.repo)
+        with store.locked("issue-12") as state:
+            state["executor"] = {"uuid": IDENTITY, "runs": []}
+            store.save(state)
+        with contextlib.redirect_stderr(io.StringIO()):
+            result = self.invoke()
+        self.assertEqual(result["status"], "completed")
+        args = self.model_calls[-1][0]
+        self.assertEqual(args[args.index("--model") + 1], "gpt-6-sol")
+        executor = store.read("issue-12")["executor"]
+        self.assertEqual((executor["backend"], executor["model"]), ("codex", "gpt-6-sol"))
+
 
 class ClaudeSessionTests(GitFixture):
     def setUp(self):
@@ -380,6 +398,7 @@ class ClaudeSessionTests(GitFixture):
         status="completed",
         identity_override=None,
         permission_mode=None,
+        model_override=None,
         tools=None,
         result_subtype="success",
         is_error=False,
@@ -401,7 +420,7 @@ class ClaudeSessionTests(GitFixture):
                 "type": "system",
                 "subtype": "init",
                 "session_id": "__ID__",
-                "model": "claude-fable-5-1",
+                "model": model_override or "claude-fable-5-1",
                 "permissionMode": permission_mode or "__MODE__",
                 "tools": tools or ["Read", "Edit", "Bash"],
                 "cwd": str(self.task_path),
@@ -475,6 +494,7 @@ class ClaudeSessionTests(GitFixture):
         self.assertEqual(args[args.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(args[args.index("--permission-prompts") + 1], "none")
         self.assertEqual(args[args.index("--setting-sources") + 1], "user,project")
+        self.assertEqual(args[args.index("--tools") + 1], ",".join(sessions.CLAUDE_TOOLSET))
         schema = json.loads((self.root / ".agentic/schemas/executor-result.json").read_text())
         self.assertEqual(json.loads(args[args.index("--json-schema") + 1]), schema)
         denied = args[args.index("--disallowedTools") + 1].split(",")
@@ -586,10 +606,23 @@ class ClaudeSessionTests(GitFixture):
         self.assertIn("permission mode", result["error"])
         self.assertIsNone(result["executor_uuid"])
 
-    def test_exposed_denied_tool_fails_the_run(self):
-        result = self.invoke(tools=["Read", "WebFetch"], verify_saved=False)
+    def test_reported_model_mismatch_fails_the_run(self):
+        result = self.invoke(model_override="claude-sonnet-5", verify_saved=False)
         self.assertEqual(result["status"], "failed")
-        self.assertIn("denied tools", result["error"])
+        self.assertIn("started model 'claude-sonnet-5'", result["error"])
+        self.assertIsNone(result["executor_uuid"])
+
+    def test_missing_recovery_record_is_a_workflow_error(self):
+        with self.assertRaisesRegex(workflow.WorkflowError, "does not exist"):
+            sessions.recover_executor(
+                self.repo, 12, IDENTITY, self.parent / "absent.jsonl", "Saved record", True
+            )
+
+    def test_exposed_tool_outside_the_toolset_fails_the_run(self):
+        result = self.invoke(tools=["Read", "StructuredOutput", "Workflow"], verify_saved=False)
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("outside the executor toolset", result["error"])
+        self.assertIn("Workflow", result["error"])
 
     def test_bypass_is_explicit_recorded_and_not_the_default(self):
         with self.assertRaisesRegex(workflow.WorkflowError, "containment-reason"):

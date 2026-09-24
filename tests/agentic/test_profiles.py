@@ -145,9 +145,7 @@ class ProfileTests(GitFixture):
 
     def test_pinned_executor_treats_records_without_a_pin_as_codex(self):
         legacy = profiles.pinned_executor({"uuid": None, "runs": []})
-        self.assertEqual(
-            (legacy["backend"], legacy["model"], legacy["legacy"]), ("codex", "gpt-6-astra", True)
-        )
+        self.assertEqual((legacy["backend"], legacy["model"], legacy["legacy"]), ("codex", None, True))
         pinned = profiles.pinned_executor(
             {"backend": "claude", "model": "claude-fable-5-1", "profile": "fable-gpt"}
         )

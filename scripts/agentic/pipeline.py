@@ -6,7 +6,7 @@ import re
 import subprocess
 
 import review as independent
-from profiles import LEGACY_REVIEWER_MODEL, active_profile, family, pinned_executor, warn
+from profiles import active_profile, note, pinned_executor, warn
 from tasks import (
     TaskStore,
     body_text,
@@ -242,6 +242,19 @@ def respond(repo, number, key, body_file, retry_confirmed_absent=False):
         )
 
 
+def round_reviewer_model(round_record, meta):
+    """The reviewer a round is bound to; rounds that predate profiles trust their own packet."""
+    if round_record.get("reviewer_model"):
+        return round_record["reviewer_model"]
+    recorded = meta.get("requested_model")
+    if not isinstance(recorded, str) or not recorded:
+        raise WorkflowError("Review round predates profiles and its packet records no reviewer model")
+    note(
+        f"review round in {round_record.get('directory')} predates profiles; accepting its packet's recorded model {recorded}"
+    )
+    return recorded
+
+
 def report_record(repo, state, round_record):
     directory = plain_path(round_record["directory"])
     allowed = plain_path(repo.main / ".agentic-local/reviews")
@@ -257,7 +270,7 @@ def report_record(repo, state, round_record):
         "plan_comment": state["approval"]["plan_comment"],
         "head_sha": round_record["head_sha"],
         "base_sha": round_record["base_sha"],
-        "requested_model": round_record.get("reviewer_model", LEGACY_REVIEWER_MODEL),
+        "requested_model": round_reviewer_model(round_record, meta),
     }
     if any(meta.get(key) != value for key, value in expected.items()):
         raise WorkflowError("Review metadata differs from the registered pipeline round")
@@ -340,13 +353,18 @@ def review_task(
         implementer = None
         if executor:
             pinned = pinned_executor(executor)
-            implementer = {
-                "backend": pinned["backend"],
-                "model": pinned["model"],
-                "family": family(pinned["model"]),
-            }
+            implementer = {"backend": pinned["backend"], "model": pinned["model"], "family": pinned["family"]}
         same_family = implementer is not None and implementer["family"] == reviewer["family"]
-        acknowledged = bool(allow_same_family or profile["allow_same_family"])
+        # A recorded profile-level allowance covers only the pairing it was recorded for:
+        # the profile's own declared implementer. Any other pinned implementer needs the flag.
+        declared = profile["implementer"]
+        recorded_applies = (
+            profile["allow_same_family"]
+            and implementer is not None
+            and implementer["backend"] == declared["backend"]
+            and implementer["model"] in (None, declared["model"])
+        )
+        acknowledged = bool(allow_same_family or recorded_applies)
         if same_family and not acknowledged:
             raise WorkflowError(
                 f"Reviewer model {reviewer['model']} shares the task's implementer family ({reviewer['family']}); "
@@ -366,7 +384,7 @@ def review_task(
         reuse = previous and not fresh and all(previous.get(k) == v for k, v in binding.items())
         record = previous if reuse else None
         if record is not None and execute and not record.get("run_attempted"):
-            prepared_model = record.get("reviewer_model", LEGACY_REVIEWER_MODEL)
+            prepared_model = round_reviewer_model(record, independent.verify_packet(record["directory"]))
             if prepared_model != reviewer["model"]:
                 raise WorkflowError(
                     f"Prepared round requests reviewer {prepared_model} but the active profile requests "
@@ -464,7 +482,7 @@ def review_task(
             "pr": state["pr"],
             "directory": record["directory"],
             "status": record["status"],
-            "model": record.get("reviewer_model", LEGACY_REVIEWER_MODEL),
+            "model": record.get("reviewer_model"),
             "profile": record.get("profile"),
             "attempted_rounds": sum(bool(item.get("run_attempted")) for item in rounds),
             "designated_review": state.get("designated_review"),

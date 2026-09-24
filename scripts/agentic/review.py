@@ -148,7 +148,17 @@ def prepare(
         # The CLI and Actions paths resolve the active profile from the trusted checkout.
         profile = active_profile(repo, cfg)
         reviewer = profile["reviewer"]
-        provenance = {"profile": profile["name"], "implementer": None, "same_family": None}
+        declared = profile["implementer"]
+        provenance = {
+            "profile": profile["name"],
+            "implementer": {
+                "backend": declared["backend"],
+                "model": declared["model"],
+                "family": declared["family"],
+            },
+            "implementer_source": "active profile (no task record on the standalone path)",
+            "same_family": profile["same_family"],
+        }
     validate_model("copilot", reviewer["model"])
     pr = repo.pr(number)
     head, base = sha(pr["head"]["sha"]), sha(pr["base"]["sha"])

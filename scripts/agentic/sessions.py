@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from subprocess import Popen
 
-from profiles import LEGACY_IMPLEMENTER, active_profile, note, pinned_executor, warn
+from profiles import active_profile, note, pinned_executor, warn
 from tasks import TaskStore, digest, plain_path, verify_contract, workspace
 from workflow import WorkflowError, configuration, positive, run, sha
 
@@ -54,10 +54,13 @@ CLAUDE_DENIED_TOOLS = [
     "Agent",
     "Task",
 ]
-# Bare tool names the executor must never even see in its tool list.
-CLAUDE_BARE_DENIED = {"WebFetch", "WebSearch", "Agent", "Task"}
+# The built-in toolset the executor may see; Claude Code adds StructuredOutput itself
+# when --json-schema is given. Anything else in system/init.tools fails the run.
+CLAUDE_TOOLSET = ["Read", "Edit", "Write", "Grep", "Glob", "Bash", "NotebookEdit"]
+CLAUDE_EXPECTED_TOOLS = set(CLAUDE_TOOLSET) | {"StructuredOutput"}
 CLAUDE_REQUIRED_FLAGS = [
     "--print",
+    "--tools",
     "--output-format",
     "--json-schema",
     "--session-id",
@@ -147,7 +150,10 @@ def recover_executor(repo, number, identity, record_file, source, confirm_stoppe
     if backend is not None and backend not in BACKEND_LABELS:
         raise WorkflowError("Recovery backend must be codex or claude")
     record_file = plain_path(record_file)
-    metadata = record_file.stat()
+    try:
+        metadata = record_file.stat()
+    except FileNotFoundError as exc:
+        raise WorkflowError(f"Recovery record does not exist: {record_file}") from exc
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 16_000_000:
         raise WorkflowError("Recovery requires a bounded regular JSONL record")
     raw = record_file.read_bytes()
@@ -293,6 +299,8 @@ def claude_command(repo, path, identity, implementer, *, containment, session_id
         "none",
         "--permission-mode",
         mode,
+        "--tools",
+        ",".join(CLAUDE_TOOLSET),
     ]
     if containment == "restricted":
         args += [
@@ -320,10 +328,7 @@ def claude_command(repo, path, identity, implementer, *, containment, session_id
     return args
 
 
-def command(
-    repo, path, directory, identity=None, implementer=None, *, containment="restricted", session_id=None
-):
-    implementer = implementer or {**LEGACY_IMPLEMENTER, "family": "openai"}
+def command(repo, path, directory, identity, implementer, *, containment="restricted", session_id=None):
     backend = implementer["backend"]
     check_cli(backend)
     if backend == "codex":
@@ -337,10 +342,9 @@ def command(
     raise WorkflowError(f"Unsupported implementer backend {backend!r}")
 
 
-def executor_prompt(repo, state, role, path, implementer=None):
+def executor_prompt(repo, state, role, path, implementer):
     from pipeline import collect_feedback
 
-    implementer = implementer or {**LEGACY_IMPLEMENTER}
     approval = state["approval"]
     public = {
         "issue": repo.api(f"issues/{approval['issue']}"),
@@ -477,14 +481,23 @@ def stream_run(store, state, record, args, prompt, path, limits):
             subtype = event.get("subtype")
             if subtype == "init":
                 identity = session_uuid(event.get("session_id"))
+                reported_model = event.get("model")
+                if reported_model is None:
+                    record["model_unconfirmed"] = True
+                elif reported_model != record.get("model"):
+                    raise WorkflowError(
+                        f"Claude started model {reported_model!r}; expected {record.get('model')!r}"
+                    )
                 if event.get("permissionMode") != requested_mode:
                     raise WorkflowError(
                         f"Claude started in permission mode {event.get('permissionMode')!r}; "
                         f"expected {requested_mode!r}"
                     )
-                exposed = CLAUDE_BARE_DENIED.intersection(event.get("tools") or [])
+                exposed = set(event.get("tools") or []) - CLAUDE_EXPECTED_TOOLS
                 if exposed:
-                    raise WorkflowError("Claude exposed denied tools: " + ", ".join(sorted(exposed)))
+                    raise WorkflowError(
+                        "Claude exposed tools outside the executor toolset: " + ", ".join(sorted(exposed))
+                    )
                 confirm_identity(identity)
             elif subtype == "permission_denied":
                 record["denied_events"] = record.get("denied_events", 0) + 1
@@ -559,12 +572,15 @@ def stream_run(store, state, record, args, prompt, path, limits):
                         while b"\n" in pending:
                             line, pending = pending.split(b"\n", 1)
                             consume(line)
+                    # Persist what fits before aborting, so the forensic tail survives
+                    # without the saved output exceeding the budget.
+                    allowed = limits["output_bytes"] - total
+                    key.data.write(chunk[: max(0, allowed)])
+                    key.data.flush()
+                    os.fsync(key.data.fileno())
                     total += len(chunk)
                     if total > limits["output_bytes"]:
                         raise WorkflowError("Managed execution exceeded its combined output budget")
-                    key.data.write(chunk)
-                    key.data.flush()
-                    os.fsync(key.data.fileno())
             if pending.strip():
                 consume(pending)
             remaining = max(0.01, deadline - time.monotonic())
@@ -667,8 +683,13 @@ def managed_launch(repo, role, task, execute=False, containment="restricted", co
         session_id = None
         if executor is not None:
             pinned = pinned_executor(executor)
-            if (pinned["backend"], pinned["model"]) != (implementer["backend"], implementer["model"]):
-                bound = f"Task is bound to backend {pinned['backend']} model {pinned['model']}"
+            mismatch = pinned["backend"] != implementer["backend"] or (
+                pinned["model"] is not None and pinned["model"] != implementer["model"]
+            )
+            if mismatch:
+                bound = f"Task is bound to backend {pinned['backend']}"
+                if pinned["model"]:
+                    bound += f" model {pinned['model']}"
                 if pinned["profile"]:
                     bound += f" (profile {pinned['profile']})"
                 raise WorkflowError(
@@ -677,8 +698,9 @@ def managed_launch(repo, role, task, execute=False, containment="restricted", co
                 )
             if pinned["legacy"]:
                 note(
-                    f"executor record for issue {number} predates profiles; treating it as "
-                    f"{pinned['backend']}/{pinned['model']}"
+                    f"executor record for issue {number} predates profiles; its backend is "
+                    f"{pinned['backend']} and its model was never recorded, so the active profile's "
+                    f"{implementer['model']} applies from this run on"
                 )
             require_idle(executor)
             if not executor.get("uuid"):
@@ -723,7 +745,8 @@ def managed_launch(repo, role, task, execute=False, containment="restricted", co
             )
             if executor.get("runs"):
                 executor["pin_note"] = (
-                    "Backfilled from a record that predates profiles; executor inferred as codex"
+                    "Backfilled from a record that predates profiles: backend inferred as codex; "
+                    "the model was not recorded before this run"
                 )
         record = {
             "role": role,

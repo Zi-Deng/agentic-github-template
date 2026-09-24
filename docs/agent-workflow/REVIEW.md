@@ -51,7 +51,7 @@ transmitted. This path policy is a baseline, not a content-based secret detector
 Inspect your own source and augment exclusions for a project's restricted paths.
 
 The default budgets are 300 KB of diff, 250 KB per source file, 12 MB of total text,
-15 minutes and 400 Copilot AI credits. These are operational choices, not claims
+15 minutes and 400 Copilot AI credits (Copilot CLI 1.0.83 refuses an allowance below 30). These are operational choices, not claims
 about model capacity or price. Per-file omissions are recorded explicitly; oversized
 diffs and total snapshots fail rather than silently presenting a partial review as
 complete. Credit limits are provider controls and may overshoot by a request already
