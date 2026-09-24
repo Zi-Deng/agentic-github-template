@@ -16,6 +16,7 @@ import tempfile
 import uuid
 from pathlib import Path, PurePosixPath
 
+from profiles import active_profile, family, validate_model
 from workflow import Repo, WorkflowError, configuration, positive, run, sha, write_json
 
 TEXT_SUFFIXES = {
@@ -133,9 +134,22 @@ def current_pr(repo, number, head, base):
     return pr
 
 
-def prepare(repo, number, issue_number, plan_comment, expected_head=None, output=None):
+def reviewer_budget(meta, key, fallback):
+    value = (meta.get("reviewer") or {}).get(key)
+    return value if value else meta["config"][fallback]
+
+
+def prepare(
+    repo, number, issue_number, plan_comment, expected_head=None, output=None, reviewer=None, provenance=None
+):
     number, issue_number, plan_comment = map(positive, (number, issue_number, plan_comment))
     cfg = configuration(repo.root)
+    if reviewer is None:
+        # The CLI and Actions paths resolve the active profile from the trusted checkout.
+        profile = active_profile(repo, cfg)
+        reviewer = profile["reviewer"]
+        provenance = {"profile": profile["name"], "implementer": None, "same_family": None}
+    validate_model("copilot", reviewer["model"])
     pr = repo.pr(number)
     head, base = sha(pr["head"]["sha"]), sha(pr["base"]["sha"])
     if expected_head and head != sha(expected_head):
@@ -221,7 +235,15 @@ def prepare(repo, number, issue_number, plan_comment, expected_head=None, output
         "merge_base_sha": ancestor,
         "created_at": dt.datetime.now(dt.UTC).isoformat(),
         "files": files,
-        "requested_model": cfg["copilot_model"],
+        "requested_model": reviewer["model"],
+        "reviewer": {
+            "backend": "copilot",
+            "model": reviewer["model"],
+            "family": family(reviewer["model"]),
+            "max_ai_credits": reviewer.get("max_ai_credits") or cfg["review_max_ai_credits"],
+            "timeout_seconds": reviewer.get("timeout_seconds") or cfg["review_timeout_seconds"],
+        },
+        "provenance": provenance or {},
         "config": cfg,
     }
     write_json(directory / "metadata.json", metadata)
@@ -246,8 +268,8 @@ def review(repo, directory):
         raise WorkflowError("Review packet belongs to another repository")
     current_pr(repo, meta["pr"], meta["head_sha"], meta["base_sha"])
     model = meta["requested_model"]
-    if not re.fullmatch(r"claude-[a-z0-9.-]+", model):
-        raise WorkflowError("Choose an explicit Claude model ID through Copilot, not auto")
+    if not re.fullmatch(r"(?:claude|gpt)-[a-z0-9.-]+", model):
+        raise WorkflowError("Choose an explicit Claude or GPT model ID through Copilot, not auto")
     if (directory / "review.md").exists():
         raise WorkflowError("A review already exists here; prepare a fresh review for another round")
     help_text = run(["copilot", "--help"]).stdout
@@ -334,13 +356,18 @@ def review(repo, directory):
             "--stream",
             "off",
             "--max-ai-credits",
-            str(meta["config"]["review_max_ai_credits"]),
+            str(reviewer_budget(meta, "max_ai_credits", "review_max_ai_credits")),
             "--usage-output-file",
             str(directory / "usage.json"),
             "--prompt",
             prompt,
         ]
-        response = run(args, cwd=workspace, env=env, timeout=meta["config"]["review_timeout_seconds"])
+        response = run(
+            args,
+            cwd=workspace,
+            env=env,
+            timeout=reviewer_budget(meta, "timeout_seconds", "review_timeout_seconds"),
+        )
         actual = {str(p.relative_to(workspace)): digest(p) for p in workspace.rglob("*") if p.is_file()}
         if actual != meta["files"]:
             raise WorkflowError("The reviewer workspace changed; report is not valid")
@@ -348,10 +375,15 @@ def review(repo, directory):
         raise WorkflowError("Copilot returned no review; no result will be published")
     verify_packet(directory)
     current_pr(repo, meta["pr"], meta["head_sha"], meta["base_sha"])
+    provenance = meta.get("provenance") or {}
+    implementer = provenance.get("implementer") or {}
     header = (
         f"## Independent Copilot CLI review\n\nPR #{meta['pr']} · reviewed head `{meta['head_sha']}` "
         f"· base `{meta['base_sha']}`\n\nRequested model: `{model}`. This is model-generated static review, "
-        "not human approval. CI results were supplied as evidence; this reviewer executed no tests.\n\n"
+        "not human approval. CI results were supplied as evidence; this reviewer executed no tests. "
+        f"Reviewer family: {family(model)}; implementer family: {implementer.get('family') or 'not recorded'}."
+        + (" Same-family exception recorded." if provenance.get("same_family") else "")
+        + "\n\n"
     )
     (directory / "review.md").write_text(header + response.stdout.strip() + "\n")
     meta["review_sha256"] = digest(directory / "review.md")

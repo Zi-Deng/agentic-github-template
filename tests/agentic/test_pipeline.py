@@ -1,5 +1,9 @@
 """PR and independent-review integration using Git fixtures and model doubles."""
 
+import contextlib
+import io
+import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +12,7 @@ from test_workflow import GitFixture, git, workflow
 # The shared fixture establishes the scripts import path.
 # isort: split
 import pipeline
+import profiles
 import review
 import tasks
 
@@ -203,3 +208,64 @@ class PipelineTests(PipelineFixture):
         (Path(result["directory"]) / "review.md").write_text("Edited report")
         with self.assertRaisesRegex(workflow.WorkflowError, "changed"):
             pipeline.validate_designated(self.repo, tasks.TaskStore(self.repo).read("issue-12"))
+
+    def test_review_round_freezes_the_reviewer_and_survives_a_profile_switch(self):
+        with patch.object(review, "review", side_effect=self.model_double):
+            result = pipeline.review_task(self.repo, 12, execute=True, publish=True)
+        self.assertEqual((result["model"], result["profile"]), ("claude-opus-5", "astra-claude"))
+        store = tasks.TaskStore(self.repo)
+        state = store.read("issue-12")
+        self.assertEqual(state["review_rounds"][-1]["reviewer_model"], "claude-opus-5")
+        self.assertFalse(state["review_rounds"][-1]["same_family"])
+        directory = Path(result["directory"])
+        meta = json.loads((directory / "metadata.json").read_text())
+        self.assertEqual(meta["reviewer"]["model"], "claude-opus-5")
+        self.assertEqual(meta["provenance"]["profile"], "astra-claude")
+        with patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}):
+            verified = pipeline.validate_designated(self.repo, store.read("issue-12"))
+        self.assertEqual(verified["review"]["commit_id"], self.head)
+        meta["requested_model"] = "gpt-6-astra"
+        workflow.write_json(directory / "metadata.json", meta)
+        with self.assertRaisesRegex(workflow.WorkflowError, "differs"):
+            pipeline.validate_designated(self.repo, store.read("issue-12"))
+
+    def test_same_family_round_requires_acknowledgement(self):
+        store = tasks.TaskStore(self.repo)
+        with store.locked("issue-12") as state:
+            state["executor"] = {
+                "uuid": "12345678-1234-4234-8234-123456789abc",
+                "runs": [],
+                "backend": "claude",
+                "model": "claude-fable-5-1",
+                "profile": "fable-gpt",
+            }
+            store.save(state)
+        with patch.object(review, "review", side_effect=self.model_double):
+            with self.assertRaisesRegex(workflow.WorkflowError, "implementer family"):
+                pipeline.review_task(self.repo, 12, execute=True)
+            self.assertEqual(self.model_runs, 0)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = pipeline.review_task(self.repo, 12, execute=True, allow_same_family=True)
+        self.assertEqual(result["status"], "reviewed")
+        self.assertIn("warning:", stderr.getvalue())
+        record = store.read("issue-12")["review_rounds"][-1]
+        self.assertTrue(record["same_family"])
+        self.assertTrue(record["same_family_acknowledged"])
+        meta = json.loads((Path(result["directory"]) / "metadata.json").read_text())
+        self.assertTrue(meta["provenance"]["same_family"])
+        self.assertEqual(meta["provenance"]["implementer"]["family"], "anthropic")
+
+    def test_prepared_round_for_another_reviewer_needs_fresh(self):
+        prepared = pipeline.review_task(self.repo, 12)
+        self.assertEqual(prepared["status"], "prepared")
+        with (
+            patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}),
+            patch.object(review, "review", side_effect=self.model_double),
+        ):
+            with self.assertRaisesRegex(workflow.WorkflowError, "use --fresh"):
+                pipeline.review_task(self.repo, 12, execute=True)
+            self.assertEqual(self.model_runs, 0)
+            result = pipeline.review_task(self.repo, 12, execute=True, fresh=True)
+        self.assertEqual((result["model"], result["profile"]), ("gpt-6-astra", "fable-gpt"))
+        self.assertEqual(self.model_runs, 1)

@@ -52,7 +52,7 @@ body:
     id: budget
     attributes:
       label: Budget and stop conditions
-      value: "Use Astra for non-review roles; Claude through Copilot for review. At most two substantive repair rounds before reassessing the design. No GPU campaign unless separately authorized."
+      value: "Use the active profile's implementer for non-review roles and its Copilot reviewer for independent review (`workflow.py profile show`). One attempted review round by default; a further round only for a supported critical P0/P1 finding or an explicit request. No GPU campaign unless separately authorized."
     validations: {required: true}
   - type: textarea
     id: rollback

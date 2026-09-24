@@ -2,12 +2,19 @@
 """Check template configuration and local Markdown links during development."""
 
 import re
+import sys
 from pathlib import Path
 from urllib.parse import unquote
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts/agentic"))
+import skills  # noqa: E402
+
+# Claude Code reads AGENTS.md only while none of these instruction files exists, and a
+# `claude -p` executor would run shipped hooks or MCP servers without a trust dialog.
+FORBIDDEN_FILES = ["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md", ".claude/settings.json", ".mcp.json"]
 
 SKILLS = {
     "agentic-workflow",
@@ -46,8 +53,25 @@ def validate_skills(root):
         assert policy.get("allow_implicit_invocation", True) is True, metadata
 
 
+def validate_mirror(root):
+    observed = skills.sync(root, check=True)
+    assert sorted(observed["current"]) == sorted(SKILLS), observed
+    for name in SKILLS:
+        source = root / ".agents/skills" / name / "SKILL.md"
+        copy = root / ".claude/skills" / name / "SKILL.md"
+        assert not copy.is_symlink() and not copy.parent.is_symlink(), copy
+        assert copy.read_bytes() == source.read_bytes(), copy
+    for relative in FORBIDDEN_FILES:
+        assert not (root / relative).exists(), f"{relative} must not be shipped"
+    ignore_rules = (root / ".gitignore").read_text().splitlines()
+    assert "/.claude/settings.local.json" in ignore_rules, (
+        ".gitignore must ignore /.claude/settings.local.json"
+    )
+
+
 def main():
     validate_skills(ROOT)
+    validate_mirror(ROOT)
     for path in (ROOT / ".github").rglob("*.yml"):
         # BaseLoader retains the Actions key `on` rather than YAML 1.1's boolean True.
         value = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
@@ -66,6 +90,7 @@ def main():
         ROOT / "AGENTS.md",
         *(ROOT / "docs").rglob("*.md"),
         *(ROOT / ".agents/skills").rglob("*.md"),
+        *(ROOT / ".claude/skills").rglob("*.md"),
     ]
     errors = []
     for path in paths:

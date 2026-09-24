@@ -6,6 +6,7 @@ import re
 import subprocess
 
 import review as independent
+from profiles import LEGACY_REVIEWER_MODEL, active_profile, family, pinned_executor, warn
 from tasks import (
     TaskStore,
     body_text,
@@ -256,7 +257,7 @@ def report_record(repo, state, round_record):
         "plan_comment": state["approval"]["plan_comment"],
         "head_sha": round_record["head_sha"],
         "base_sha": round_record["base_sha"],
-        "requested_model": "claude-opus-5",
+        "requested_model": round_record.get("reviewer_model", LEGACY_REVIEWER_MODEL),
     }
     if any(meta.get(key) != value for key, value in expected.items()):
         raise WorkflowError("Review metadata differs from the registered pipeline round")
@@ -326,14 +327,35 @@ def review_task(
     continue_reason=None,
     approved_continuation=False,
     retry_confirmed_absent=False,
+    allow_same_family=False,
 ):
     number = positive(number)
     store = TaskStore(repo)
     with store.locked(f"issue-{number}") as state:
         contract = verify_contract(repo, state)
         pr = current_task_pr(repo, state)
-        if configuration(repo.root)["copilot_model"] != "claude-opus-5":
-            raise WorkflowError("Managed review requires the trusted claude-opus-5 policy")
+        profile = active_profile(repo, configuration(repo.root))
+        reviewer = profile["reviewer"]
+        executor = state.get("executor")
+        implementer = None
+        if executor:
+            pinned = pinned_executor(executor)
+            implementer = {
+                "backend": pinned["backend"],
+                "model": pinned["model"],
+                "family": family(pinned["model"]),
+            }
+        same_family = implementer is not None and implementer["family"] == reviewer["family"]
+        acknowledged = bool(allow_same_family or profile["allow_same_family"])
+        if same_family and not acknowledged:
+            raise WorkflowError(
+                f"Reviewer model {reviewer['model']} shares the task's implementer family ({reviewer['family']}); "
+                "switch profile or pass --allow-same-family to record this exception"
+            )
+        if same_family:
+            warn(
+                f"review round for issue {number} uses the implementer's model family ({reviewer['family']})"
+            )
         rounds = state.setdefault("review_rounds", [])
         binding = {
             "head_sha": pr["head"]["sha"],
@@ -343,6 +365,13 @@ def review_task(
         previous = rounds[-1] if rounds else None
         reuse = previous and not fresh and all(previous.get(k) == v for k, v in binding.items())
         record = previous if reuse else None
+        if record is not None and execute and not record.get("run_attempted"):
+            prepared_model = record.get("reviewer_model", LEGACY_REVIEWER_MODEL)
+            if prepared_model != reviewer["model"]:
+                raise WorkflowError(
+                    f"Prepared round requests reviewer {prepared_model} but the active profile requests "
+                    f"{reviewer['model']}; switch profile or use --fresh"
+                )
         needs_run = execute and (record is None or not record.get("run_attempted"))
         attempted = sum(bool(item.get("run_attempted")) for item in rounds)
         if (
@@ -360,12 +389,24 @@ def review_task(
                 number,
                 state["approval"]["plan_comment"],
                 expected_head=binding["head_sha"],
+                reviewer=reviewer,
+                provenance={
+                    "profile": profile["name"],
+                    "implementer": implementer,
+                    "same_family": same_family,
+                },
             )
             record = {
                 **binding,
                 "directory": str(directory),
                 "status": "prepared",
                 "run_attempted": False,
+                "reviewer_backend": "copilot",
+                "reviewer_model": reviewer["model"],
+                "reviewer_family": reviewer["family"],
+                "profile": profile["name"],
+                "same_family": same_family,
+                "same_family_acknowledged": acknowledged if same_family else None,
             }
             rounds.append(record)
             store.save(state)
@@ -423,7 +464,8 @@ def review_task(
             "pr": state["pr"],
             "directory": record["directory"],
             "status": record["status"],
-            "model": "claude-opus-5",
+            "model": record.get("reviewer_model", LEGACY_REVIEWER_MODEL),
+            "profile": record.get("profile"),
             "attempted_rounds": sum(bool(item.get("run_attempted")) for item in rounds),
             "designated_review": state.get("designated_review"),
         }
@@ -447,7 +489,14 @@ def add_commands(sub):
     response.add_argument("--retry-confirmed-absent", action="store_true")
     review_parser = sub.add_parser("task-review")
     review_parser.add_argument("issue")
-    for flag in ("execute", "publish", "fresh", "approved-continuation", "retry-confirmed-absent"):
+    for flag in (
+        "execute",
+        "publish",
+        "fresh",
+        "approved-continuation",
+        "retry-confirmed-absent",
+        "allow-same-family",
+    ):
         review_parser.add_argument("--" + flag, action="store_true")
     review_parser.add_argument("--continue-reason")
 
@@ -471,5 +520,6 @@ def dispatch(repo, args):
             args.continue_reason,
             args.approved_continuation,
             args.retry_confirmed_absent,
+            args.allow_same_family,
         )
     raise WorkflowError("Unknown pipeline operation")

@@ -1,6 +1,6 @@
 # Implementer
 
-Use GPT-6-Astra. Confirm your issue worktree, branch and status. Read AGENTS.md, the
+You are the configured implementer model for the active profile; do not switch models or delegate. Confirm your issue worktree, branch and status. Read AGENTS.md, the
 issue and approved plan. Preserve existing user work and implement only that scope.
 For a bug, establish a regression that fails on the base before fixing it. Run focused
 and required validation, inspect the full diff, and prepare coherent commits where
