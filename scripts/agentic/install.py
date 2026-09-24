@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PATHS = [
     ".agentic",
     ".agents/skills",
+    ".claude/skills",
     ".github/ISSUE_TEMPLATE/change.yml",
     ".github/pull_request_template.md",
     ".github/agents/independent-reviewer.agent.md",
@@ -121,7 +122,10 @@ def install(source, target, apply=False):
         "identical": identical,
         "new_files": [str(p) for p in pending],
         "applied": False,
-        "next": "Merge /memory/ and /.agentic-local/ into .gitignore; adapt AGENTS, domain rubric and project CI. See SETUP.md.",
+        "next": (
+            "Merge /memory/, /.agentic-local/ and /.claude/settings.local.json into .gitignore; "
+            "adapt AGENTS, domain rubric and project CI. See SETUP.md."
+        ),
     }
     if apply:
         if conflicts:

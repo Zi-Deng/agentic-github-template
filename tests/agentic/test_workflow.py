@@ -13,6 +13,7 @@ from unittest.mock import patch
 SOURCE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SOURCE / "scripts/agentic"))
 import install  # noqa: E402
+import profiles  # noqa: E402
 import review  # noqa: E402
 import workflow  # noqa: E402
 
@@ -74,6 +75,7 @@ class GitFixture(unittest.TestCase):
         # These fixtures simulate coordinator operations even when their caller
         # is a managed executor. Dedicated tests explicitly restore the guard.
         os.environ.pop("AGENTIC_EXECUTOR_ROLE", None)
+        os.environ.pop("AGENTIC_PROFILE", None)
 
     def api(self, suffix, *, data=None, **kwargs):
         if data is not None:
@@ -325,7 +327,7 @@ class ReviewTests(GitFixture):
         directory = self.packet()
         meta = review.verify_packet(directory)
         self.assertEqual(meta["head_sha"], self.head)
-        self.assertEqual(meta["requested_model"], workflow.configuration(self.root)["copilot_model"])
+        self.assertEqual(meta["requested_model"], profiles.active_profile(self.repo)["reviewer"]["model"])
         self.assertIn("+value = 2", (directory / "packet/diff.txt").read_text())
         context = json.loads((directory / "packet/context.json").read_text())
         self.assertEqual(context["designated_plan_comment"]["body"], "Approved plan")
@@ -387,7 +389,7 @@ class ReviewTests(GitFixture):
         packet_config = workflow.configuration(self.root)
         with patch.object(review, "configuration", return_value=packet_config):
             directory = self.packet()
-        requested_model = packet_config["copilot_model"]
+        requested_model = profiles.active_profile(self.repo, packet_config)["reviewer"]["model"]
         original = review.run
         observed = []
 
@@ -440,6 +442,72 @@ class ReviewTests(GitFixture):
             str(packet_config["review_max_ai_credits"]),
         )
         self.assertIn(f"Requested model: `{requested_model}`", report.read_text())
+
+    def test_gpt_reviewer_packet_runs_and_auto_is_refused(self):
+        with patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}):
+            directory = self.packet()
+        meta = review.verify_packet(directory)
+        self.assertEqual(meta["requested_model"], "gpt-6-astra")
+        self.assertEqual(meta["reviewer"]["family"], "openai")
+        self.assertEqual(meta["provenance"]["profile"], "fable-gpt")
+        original = review.run
+        observed = []
+
+        def fake(args, **kwargs):
+            if args[0] != "copilot":
+                return original(args, **kwargs)
+            if args[1] == "--help":
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    "--available-tools --no-custom-instructions --disable-builtin-mcps --no-remote-export --no-ask-user --usage-output-file --max-ai-credits",
+                    "",
+                )
+            if args[1] == "--version":
+                return subprocess.CompletedProcess(args, 0, "Copilot test double\n", "")
+            observed.append(args)
+            return subprocess.CompletedProcess(
+                args, 0, "No material findings supported by this review.\n", ""
+            )
+
+        with (
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
+            patch.object(review, "run", side_effect=fake),
+            patch.object(review, "configuration", side_effect=AssertionError("frozen packet only")),
+        ):
+            report = review.review(self.repo, directory)
+        argv = observed[0]
+        self.assertEqual(argv[argv.index("--model") + 1], "gpt-6-astra")
+        self.assertEqual(argv[argv.index("--max-ai-credits") + 1], "400")
+        text = report.read_text()
+        self.assertIn("Requested model: `gpt-6-astra`", text)
+        self.assertIn("Reviewer family: openai", text)
+        meta["requested_model"] = "auto"
+        workflow.write_json(directory / "metadata.json", meta)
+        report.unlink()
+        with self.assertRaisesRegex(workflow.WorkflowError, "not auto"):
+            review.review(self.repo, directory)
+
+
+class LaunchTests(GitFixture):
+    def test_interactive_launch_follows_the_active_profile(self):
+        preview = workflow.launch(self.repo, "draft", "probe")
+        self.assertEqual(preview["backend"], "codex")
+        self.assertIn("--sandbox read-only", preview["command"])
+        self.assertIn("--model gpt-6-astra", preview["command"])
+        with self.assertRaisesRegex(workflow.WorkflowError, "managed execution only"):
+            workflow.launch(self.repo, "draft", "probe", containment="bypass")
+        with patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}):
+            planning = workflow.launch(self.repo, "plan", "12")
+            self.assertEqual((planning["backend"], planning["profile"]), ("claude", "fable-gpt"))
+            self.assertIn("--permission-mode plan", planning["command"])
+            self.assertIn("--model claude-fable-5-1", planning["command"])
+            with self.assertRaisesRegex(workflow.WorkflowError, "task worktree"):
+                workflow.launch(self.repo, "implement", "12")
+            self.task()
+            implement = workflow.launch(workflow.Repo(self.task_path), "implement", "12")
+        self.assertIn("--permission-mode acceptEdits", implement["command"])
+        self.assertEqual(implement["cwd"], str(self.task_path))
 
 
 class InstallerTests(unittest.TestCase):
@@ -497,6 +565,14 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue((target / "scripts/agentic/workflow.py").exists())
             self.assertTrue((target / "scripts/finish-task.sh").exists())
             self.assertEqual(len(list((target / ".agents/skills").glob("*/SKILL.md"))), 8)
+            mirrored = sorted((target / ".claude/skills").glob("*/SKILL.md"))
+            self.assertEqual(len(mirrored), 8)
+            for copy in mirrored:
+                source = target / ".agents/skills" / copy.parent.name / "SKILL.md"
+                self.assertEqual(copy.read_bytes(), source.read_bytes())
+                self.assertFalse((copy.parent / "agents").exists())
+            for forbidden in ("CLAUDE.md", ".claude/settings.json", ".mcp.json"):
+                self.assertFalse((target / forbidden).exists(), forbidden)
             self.assertFalse((target / ".agentic-local").exists())
 
     def test_installer_rejects_non_directory_ancestor_before_writes(self):

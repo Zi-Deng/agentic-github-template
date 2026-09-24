@@ -131,7 +131,7 @@ the zero/limiting behavior documented by current tests.
 
 Require explicit scope for workflow changes, cost and loss semantics, split creation,
 calibration fitting/selection, metric reporting, campaign launchers and paper outputs.
-Set Astra for all non-review roles. Keep Copilot review static and independent.
+Select a profile with `workflow.py profile use`. Keep Copilot review static and independent.
 
 ### Add project documentation and templates
 
@@ -204,27 +204,28 @@ missing boundary assertion for an existing metric, **if inspection confirms it i
 missing**; the current suite already covers many NaN, class-order and cost-orientation
 cases. Do not invent a defect to demonstrate the pipeline.
 
-Use the full issue → plan → worktree → draft PR → CPU CI → Copilot review → Astra
-repair loop. The maintainer reviews the scientific implications and merges only the
+Use the full issue → plan → worktree → draft PR → CPU CI → Copilot review → repair
+loop. The maintainer reviews the scientific implications and merges only the
 recorded reviewed head. Use the human finishing script to archive ignored outputs
 before guarded cleanup. New local commits, tracked edits and unexpected non-ignored
 files must still block cleanup.
 
 Measure time to first draft PR, CI duration/failure rate, review findings accepted
 versus rejected, repair rounds, model usage and unresolved evidence. Start with one
-high-risk task at a time. If Astra cost becomes disproportionate, propose a measured
-change to use cheaper OpenAI helpers for mechanical drafting or summaries; keep the
-initial all-Astra policy until that decision is made.
+high-risk task at a time. If implementer cost becomes disproportionate, propose a
+measured change (another profile, or cheaper helpers for mechanical drafting); keep the
+selected profile until that decision is made.
 
 ## Use the skills after adoption
 
-Include all eight `.agents/skills` directories from the same reviewed template version
-as the helpers. Their relative links depend on the installed operating documents and
+Include all eight `.agents/skills` directories and the generated `.claude/skills` mirror
+from the same reviewed template version as the helpers. Their relative links depend on the installed operating documents and
 `.agentic` prompts. Preserve NICME's existing instructions, validation commands and
 any independently maintained skills when reconciling installer conflicts. Do not copy
 private `.agentic-local` state or another project's executor UUID.
 
-For the first ordinary NICME issue, open Astra in its clean control checkout and use:
+For the first ordinary NICME issue, open Codex or Claude Code in its clean control
+checkout (NICME has no `CLAUDE.md`, so Claude Code reads its `AGENTS.md` directly) and use:
 
 ```text
 $agentic-workflow Implement the approved scope of NICME issue #N
@@ -243,8 +244,8 @@ CPU checks plus the portable workflow tests; collect the extra domain evidence i
 The coordinator publishes the draft PR at a coherent checkpoint and updates the
 acceptance/evidence table as checks complete.
 
-Use `$agentic-review PR #P` for a fresh Opus snapshot review and `$agentic-repair PR #P`
-to resume the exact NICME implementation UUID. The repair prompt must include both
+Use `$agentic-review PR #P` for a fresh snapshot review by the profile's reviewer and
+`$agentic-repair PR #P` to resume the exact NICME implementation UUID. The repair prompt must include both
 review records and inline comments. Each material finding receives a public fix,
 evidence-backed rebuttal or explicitly accepted follow-up. Changes to head/base require
 fresh review; an unchanged model conversation is not review evidence.
@@ -262,7 +263,7 @@ Record these pilot acceptance results in NICME's adoption PR:
 - The eight skill names appear in the actual Codex host used for NICME.
 - Issue/plan approval and PR links resolve to NICME, not the template repository.
 - Implementation and repair report the same UUID and registered worktree.
-- The review reports Opus, the exact head/base, coverage limits and no executed tests.
+- The review reports the profile's reviewer model, the exact head/base, coverage limits and no executed tests.
 - CPU CI and required check names match the current NICME configuration.
 - The human finishing command preserves ignored research artifacts and stops on an
   advanced local or remote task tip.

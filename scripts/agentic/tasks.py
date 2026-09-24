@@ -442,6 +442,7 @@ def add_commands(sub):
     recovery.add_argument("--record-file", required=True)
     recovery.add_argument("--recovery-source", required=True)
     recovery.add_argument("--confirm-stopped", action="store_true", required=True)
+    recovery.add_argument("--backend", choices=["codex", "claude"])
     finishing = sub.add_parser("finish-prepare")
     finishing.add_argument("issue")
     finishing.add_argument("--assessment-file", required=True)
@@ -469,6 +470,7 @@ def dispatch(repo, args: argparse.Namespace):
             args.record_file,
             args.recovery_source,
             args.confirm_stopped,
+            backend=args.backend,
         )
     if args.command == "finish-prepare":
         from finish import prepare_finish

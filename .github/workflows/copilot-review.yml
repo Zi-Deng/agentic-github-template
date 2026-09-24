@@ -22,6 +22,11 @@ on:
         description: Publish a COMMENT review after generation
         default: false
         type: boolean
+      profile:
+        description: Profile name from .agentic/config.json (empty = default_profile)
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
   issues: read
@@ -54,9 +59,11 @@ jobs:
           REVIEW_ISSUE: ${{ inputs.issue }}
           REVIEW_PLAN: ${{ inputs.plan_comment }}
           REVIEW_SHA: ${{ inputs.head_sha }}
+          REVIEW_PROFILE: ${{ inputs.profile }}
         run: |
+          if [ -n "$REVIEW_PROFILE" ]; then export AGENTIC_PROFILE="$REVIEW_PROFILE"; fi
           python scripts/agentic/review.py prepare "$REVIEW_PR" --issue "$REVIEW_ISSUE" --plan-comment "$REVIEW_PLAN" --expected-head "$REVIEW_SHA" --output "$RUNNER_TEMP/review"
-      - name: Run independent Claude review through Copilot
+      - name: Run independent review through Copilot CLI
         env:
           GH_TOKEN: ${{ github.token }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN }}

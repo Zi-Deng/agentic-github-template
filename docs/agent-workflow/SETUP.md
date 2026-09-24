@@ -26,11 +26,13 @@ must not contain parent (`..`) components or symlinks; supply a direct target pa
 ```bash
 git --version
 gh --version
-codex --version
 copilot --version
+codex --version        # profiles with the Codex implementer
+claude --version       # profiles with the Claude Code implementer (2.1.277 or newer)
 gh auth login --hostname github.com --git-protocol ssh
 gh auth status
 codex login status
+claude auth login      # once; then `claude auth status` must print "loggedIn": true
 ```
 
 For HTTPS Git remotes, run `gh auth setup-git` after login. SSH remotes use your
@@ -52,17 +54,20 @@ author. Record that distinction when different accounts are deliberately used.
 Keep tokens in the environment or credential store, never `.agentic/config.json`.
 See [GitHub's Copilot authentication reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
 
-The configured reviewer is `claude-opus-5`, with a 400-AI-credit review limit. Verify
-that the inference account can select that exact model; earlier Sonnet or Fable access
-does not establish Opus access. Read the [Opus access guidance](REVIEW.md#claude-opus-5-access).
+Each profile names its Copilot reviewer (`claude-opus-5` under `astra-claude`,
+`gpt-6-astra` under `fable-gpt`), with a 400-AI-credit review limit. Verify that the
+inference account can select every reviewer model you intend to use; access to one model
+does not establish access to another. Read the [Opus](REVIEW.md#claude-opus-5-access) and
+[GPT-6 Astra](REVIEW.md#gpt-6-astra-access) access guidance.
 The Copilot Requests token permission and existing environment secret names remain the
 same; selecting a model does not grant account entitlement.
 
-Open Codex and use `/model`; also inspect Copilot's `/model` picker for account availability before
-spending on a project task. The initial names in `.agentic/config.json` are explicit
-requests, not guarantees of entitlement. Codex receives `--model gpt-6-astra` on
-every role launch; no user-wide model setting is modified. See the
-[Codex CLI reference](https://developers.openai.com/codex/cli/reference).
+Inspect each tool's `/model` picker for account availability before spending on a project
+task. The profile names in `.agentic/config.json` are explicit requests, not guarantees of
+entitlement. Each backend receives its model explicitly on every launch
+(`codex --model gpt-6-astra` or `claude --model claude-fable-5-1`); no user-wide model
+setting is modified. See the [Codex CLI reference](https://developers.openai.com/codex/cli/reference)
+and the [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference).
 
 ## 2. Validate this checkout
 
@@ -84,6 +89,84 @@ without modifying the shared `ml` environment.
 `doctor` checks tools, Git state, local configuration and `gh` authentication. It does
 not prove Copilot entitlement, model access, ruleset enforcement or successful CI.
 Those need the first live PR described below.
+
+## Profiles and Claude Code containment
+
+`.agentic/config.json` (schema 2) declares named profiles; `default_profile` applies unless
+overridden. Precedence: `AGENTIC_PROFILE` in the environment, then the ignored
+checkout-local `.agentic-local/profile.json`, then the repository default. Unknown names
+fail closed; nothing falls back silently.
+
+| Profile | Implementer | Backend | Reviewer (Copilot CLI) | Default |
+| --- | --- | --- | --- | --- |
+| `astra-claude` | `gpt-6-astra` | Codex CLI (`codex exec --json`, `exec resume UUID`) | `claude-opus-5` | yes |
+| `fable-gpt` | `claude-fable-5-1` | Claude Code (`claude -p`, `--resume UUID`) on your Claude subscription | `gpt-6-astra` | no |
+
+```bash
+python3 scripts/agentic/workflow.py profile show
+python3 scripts/agentic/workflow.py profile list
+python3 scripts/agentic/workflow.py profile use fable-gpt
+AGENTIC_PROFILE=astra-claude python3 scripts/agentic/workflow.py launch draft "probe"
+python3 scripts/agentic/workflow.py profile clear
+```
+
+A task keeps the profile recorded at its first managed launch; a later launch or repair
+under a different profile is refused until you switch back or finish the task. Switch
+profiles between tasks, not inside one. A profile whose implementer and reviewer share a
+model family is accepted only with `profile use NAME --allow-same-family --reason TEXT`,
+and every helper warns while it is active. Schema 1 configurations from earlier adoptions
+load as an implicit `legacy` profile until you migrate them.
+
+### Claude Code prerequisites
+
+- Sign in with `claude auth login`; `claude auth status` must print `"loggedIn": true`.
+  The managed executor never uses `--bare`, which would disable that subscription login.
+- Do not add `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`: Claude Code 2.1.277 and
+  later read `AGENTS.md` only while none of them exists at or above the working directory.
+  `make check` enforces this and also refuses a tracked `.claude/settings.json` or
+  `.mcp.json`, because a `claude -p` executor runs shipped hooks and servers without a
+  trust dialog.
+- Keep `/.claude/settings.local.json` ignored (already in `.gitignore`); Claude Code writes
+  it, and an untracked copy would make every coordinator command refuse a dirty checkout.
+- Skills: Claude Code discovers only `.claude/skills/`. `make sync-skills` copies each
+  `SKILL.md` byte for byte from `.agents/skills` (not the Codex-only `agents/openai.yaml`),
+  and `make check` fails on drift. Invoke a skill as
+  `/agentic-workflow` instead of `$agentic-workflow`.
+- Transcripts live under `~/.claude/projects/<working directory with non-alphanumerics
+  replaced by ->/<session-id>.jsonl`. The format is internal; the recovery command reads
+  only `sessionId` and `cwd` from it.
+
+### Containment
+
+The managed Claude executor runs `claude -p --permission-mode dontAsk --permission-prompts
+none --tools Read,Edit,Write,Grep,Glob,Bash,NotebookEdit` (Claude Code adds
+`StructuredOutput` for the JSON result; any other tool in the session's tool list fails the
+run, which keeps skills, workflows, subagents, schedulers and messaging out of the executor)
+with an allow-list (file tools; `git add`, `commit`, `diff`, `status`, `log`, `show`,
+`rev-parse`, `ls-files`; `make`, `python3`, `pytest`, `ruff`; plus `allowed_tools_extra`
+from the profile) and a non-removable deny-list (`git push`, `gh`, `git merge`,
+`git worktree`, `git branch -D`, `rm -rf`, WebFetch, WebSearch, Agent, Task). Anything
+else is denied and the executor is expected to return `blocked`; never widen permissions
+to get past a denial. Writes to `.git`, `.claude` and `.mcp.json` are protected paths that
+`dontAsk` denies even when a rule allows them. This is tool-surface containment enforced
+by Claude Code, not credential or network isolation.
+
+`launch … --managed --containment bypass --containment-reason TEXT` runs one execution with
+`--permission-mode bypassPermissions`. It is refused in configuration, refused for the Codex
+backend, printed as a warning, and recorded in the run record. It exists for the one-off
+verification of the Claude implementer; omit the flag afterwards and confirm with a preview
+that the command shows `--permission-mode dontAsk`.
+
+### Optional OS sandbox (operator step, T4)
+
+Both Codex's `workspace-write` sandbox and Claude Code's Bash sandbox use bubblewrap on
+Linux. On Ubuntu 24.04, `sysctl kernel.apparmor_restrict_unprivileged_userns` returns `1`,
+which stops bubblewrap from creating user namespaces, and Claude's network relay needs
+`socat`. Until an administrator adds the AppArmor profile that grants `bwrap` unprivileged
+user namespaces (see the [Claude Code sandboxing documentation](https://code.claude.com/docs/en/sandboxing))
+and installs `socat`, neither sandbox starts on such a host and containment is the
+permission layer alone. A profile can then set `sandbox` to a Claude Code sandbox settings
+object; the launcher adds the shared Git directory to `filesystem.allowWrite` automatically.
 
 ## 3. Publish the template
 
@@ -208,7 +291,8 @@ select **copilot-review**, and choose **Approve and deploy**. This is the config
 maintainer gate, not a token failure. An enabled publication job has a separate gate.
 
 The manual workflow requires PR number, issue number, approved-plan comment ID and
-the exact head SHA. It uses a trusted default-branch checkout, builds a text snapshot,
+the exact head SHA, and accepts an optional `profile` name (empty means the repository
+`default_profile`). It uses a trusted default-branch checkout, builds a text snapshot,
 and runs Copilot with no GitHub write credential. An optional publication job gets
 PR write permission only after the generation job succeeds. `publish` defaults to
 false. Review artifacts expire after seven days; retain durable findings on the PR.
@@ -226,7 +310,7 @@ Once this repository is marked as a GitHub template, use **Use this template**, 
 gh repo create YOUR-OWNER/YOUR-PROJECT --template Zi-Deng/agentic-github-template --private --clone
 ```
 
-Adapt `AGENTS.md`, the README, validation commands, model configuration and domain
+Adapt `AGENTS.md`, the README, validation commands, profiles and the domain
 rubric. Keep the generic runtime and regression tests. Set up labels, rulesets,
 secrets, environments and repository settings in the new repository; those settings
 are not supplied by copying files. Run `memory-init` in every fresh clone.
@@ -253,10 +337,14 @@ CI jobs, issue forms and project validation. There is intentionally no `--force`
 option. Add `/memory/` and `/.agentic-local/` to the project's `.gitignore`; investigate
 already tracked memory before assuming that ignore rules make it private.
 
-The installer includes `.agents/skills` with all eight entrypoints, their metadata,
-and the supporting helpers and guides. After adoption, launch Codex in the project
-and verify that `$agentic-workflow` and the seven phase skills appear; restart the
-session if discovery has not refreshed. Preserve any existing project skills when
+The installer includes `.agents/skills` with all eight entrypoints, their metadata, the
+generated `.claude/skills` mirror, and the supporting helpers and guides. After adoption,
+launch Codex (`$agentic-workflow`) or Claude Code (`/agentic-workflow`) in the project and
+verify that all eight skills appear; restart the session if discovery has not refreshed.
+For adopters such as FLOW-DC: keep the `profiles` block in `.agentic/config.json` (a
+schema 1 configuration loads as the `legacy` profile), run `make sync-skills` after any
+skill edit, keep `.claude/settings.local.json` ignored, do not add a `CLAUDE.md`, and run
+one Copilot probe per reviewer model before the first review. Preserve any existing project skills when
 reconciling conflicts. Read [SKILLS.md](SKILLS.md) for invocation and managed session
 recovery and [FINISH.md](FINISH.md) before using the human finishing script.
 
