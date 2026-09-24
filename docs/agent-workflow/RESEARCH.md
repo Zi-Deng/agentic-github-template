@@ -132,3 +132,26 @@ The merge gate must inspect buckets even on exit zero, and must still reject tra
 or other nonzero failures. The [bucket mapping](https://github.com/cli/cli/blob/v2.100.0/pkg/cmd/pr/checks/aggregate.go)
 classifies only `SUCCESS` as pass; `NEUTRAL` and `SKIPPED` are skipping. Direct regressions
 exercise the gate with these result classes without executing a model or real merge.
+
+## Dual-profile implementer/reviewer — 2026-09-24
+
+The maintainer asked to switch on the fly between the Codex `gpt-6-astra` implementer
+with a Copilot Claude reviewer and a Claude Code `claude-fable-5-1` implementer with a
+Copilot GPT reviewer. Primary sources checked on 2026-09-24:
+
+| Question | Source | Application |
+| --- | --- | --- |
+| Which flags drive a headless Claude Code executor? | [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference), [headless mode](https://code.claude.com/docs/en/headless), installed `claude --help` (2.1.281) | `-p --verbose --output-format stream-json --json-schema --session-id/--resume --permission-mode --permission-prompts --allowedTools --disallowedTools --strict-mcp-config --setting-sources`; `--max-turns` is documented but absent from this build; `--bare` disables subscription login |
+| What does the stream contain? | [Headless mode](https://code.claude.com/docs/en/headless), [Agent SDK TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript) | `system/init` carries `session_id`, `permissionMode`, `tools`; the final `result` carries `subtype`, `is_error`, `structured_output`, `permission_denials` |
+| Where are Claude sessions stored and how are they resumed? | [Sessions](https://code.claude.com/docs/en/sessions) | `~/.claude/projects/<slug>/<session-id>.jsonl`, internal format; `--resume <id>` resolves from any directory since 2.1.223 |
+| Does Claude Code read AGENTS.md and `.agents/skills`? | [Memory](https://code.claude.com/docs/en/memory), [Skills](https://code.claude.com/docs/en/skills) | AGENTS.md is read natively only while no CLAUDE.md exists (2.1.277+); skills load only from `.claude/skills/`, so the template mirrors them |
+| What do permission modes deny? | [Permissions](https://code.claude.com/docs/en/permissions), [Permission modes](https://code.claude.com/docs/en/permission-modes) | `dontAsk` denies every unlisted action and protected-path writes; deny rules outrank allow rules; `bypassPermissions` is the explicit exception |
+| Why do both sandboxes fail on this host? | [Sandboxing](https://code.claude.com/docs/en/sandboxing); `sysctl kernel.apparmor_restrict_unprivileged_userns` = 1; `socat` absent | Ubuntu 24.04 AppArmor blocks bubblewrap user namespaces; documented as an optional operator step |
+| Is GPT-6 Astra a Copilot CLI model? | [GPT-6 Astra GA in Copilot](https://github.blog/changelog/2026-09-04-gpt-6-astra-is-generally-available-in-github-copilot/), [supported models](https://docs.github.com/en/copilot/reference/ai-models/supported-models) | GA for Pro+, Max, Business, Enterprise with an admin policy; the CLI ID `gpt-6-astra` follows the lowercase convention in `copilot --help` and is confirmed by the first live review |
+| Which Claude model IDs are valid? | [Model configuration](https://code.claude.com/docs/en/model-config) | Full IDs such as `claude-fable-5-1`; aliases float and are refused by the profile validator |
+
+Versions inspected: Claude Code 2.1.281, Codex 0.154.0, Copilot CLI 1.0.83, gh 2.100.0,
+CPython 3.12.3. Copilot per-model credit multipliers and subscription accounting were not
+found in the consulted documentation, so cost statements remain qualitative. The
+`profile` mechanism is declarative so adopters can add their own pairings; the family
+regexes refuse `auto` and aliases because the policy forbids floating models.

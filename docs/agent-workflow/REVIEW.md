@@ -8,8 +8,8 @@ not the implementation conversation. Its model-facing tools are `view`, `grep` a
 
 Use `$agentic-review PR #456` to coordinate the existing snapshot/run/publication
 steps with a recorded task and approved plan. Use `$agentic-repair PR #456` afterwards
-to retrieve both submitted reviews and inline comments and resume the exact Astra
-implementation UUID. The standalone review skill completes review; the complete
+to retrieve both submitted reviews and inline comments and resume the exact implementer
+session UUID. The standalone review skill completes review; the complete
 workflow skill coordinates subsequent repair and re-review. See [SKILLS.md](SKILLS.md).
 
 One attempted round per task is the default. A supported critical P0/P1 finding permits
@@ -124,8 +124,10 @@ For scientific changes apply [the domain rubric](domain-review.md).
 
 Complete the protected-environment setup in [SETUP.md](SETUP.md#6-enable-manual-actions-review).
 Then use **Actions → manual Copilot review → Run workflow**, on the default branch.
-Select the PR, issue, plan comment ID and exact head. Choose publication only when
-you intend to post the generated report; otherwise download and inspect the artifact.
+Select the PR, issue, plan comment ID and exact head, and optionally a profile name
+(empty means the repository `default_profile`; for example `-f profile=fable-gpt`).
+Choose publication only when you intend to post the generated report; otherwise download
+and inspect the artifact.
 
 ```bash
 gh workflow run copilot-review.yml --ref main \
@@ -144,11 +146,14 @@ Changing the workflow or its credentials is T4 work.
 
 ## Model selection and repair
 
-The configuration requests exactly `claude-opus-5`. Other Opus versions and Claude
-families are separate choices and are not automatic substitutes. Choose another explicit
-Claude ID only after checking account availability and deciding the cost is
-justified. Do not use `auto`, a built-in agent that silently
-selects another family, or the implementation conversation as a review session.
+The reviewer model comes from the active profile: `claude-opus-5` under `astra-claude`,
+`gpt-6-astra` under `fable-gpt`. Each review round freezes that model into its record and
+packet metadata; a profile switch afterwards changes only future rounds. Other model
+versions are separate choices, not automatic substitutes. Choose another explicit Claude
+or GPT ID only after checking account availability and deciding the cost is justified.
+Do not use `auto`, a built-in agent that silently selects another family, or the
+implementation conversation as a review session. A reviewer from the implementer's model
+family is refused unless recorded with `--allow-same-family`.
 Native GitHub Copilot code review is a separate service and does not let you pin this
 Claude choice; see [GitHub's code review description](https://docs.github.com/en/copilot/concepts/agents/code-review).
 
@@ -170,8 +175,8 @@ account access. Historical Sonnet pilot results in `VERIFICATION.md` remain
 evidence for those earlier runs, not evidence of Opus inference. Historical Fable
 reports are likewise retained under their original model and budgets.
 
-Managed repair remains an Astra task on the original branch **and original session
-UUID**. A missing UUID must be recovered rather than replaced or selected with
+Managed repair remains a task of the original implementer session on the original branch
+**and original session UUID**. A missing UUID must be recovered rather than replaced or selected with
 `--last`. The legacy interactive launcher remains a manual alternative that starts
 a separate session. Post a finding-by-finding
 response with commits and evidence. One attempted round remains the default; additional
@@ -193,3 +198,13 @@ coverage. See [GitHub's credit-limit reference](https://docs.github.com/en/copil
 
 Private-path exclusions and static tool restrictions remain in force. The snapshot's
 ordinary source and public comments are sent to Copilot for the authorized review.
+
+### GPT-6 Astra access
+
+Checked on 2026-09-24. GitHub announced GPT-6 Astra as generally available in Copilot,
+including Copilot CLI, on 2026-09-04 for Copilot Pro+, Max, Business and Enterprise;
+Business and Enterprise administrators must enable its model policy. GitHub's documentation
+lists the display name; the CLI ID `gpt-6-astra` follows the lowercase convention shown in
+`copilot --help` and is confirmed by the first real review recorded in VERIFICATION.md.
+See [GitHub's GPT-6 Astra announcement](https://github.blog/changelog/2026-09-04-gpt-6-astra-is-generally-available-in-github-copilot/)
+and [current supported models](https://docs.github.com/en/copilot/reference/ai-models/supported-models).

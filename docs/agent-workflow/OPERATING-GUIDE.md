@@ -4,8 +4,9 @@ The issue is the contract, the PR is the durable record, and the maintainer owns
 merge. Agent conversations support that record; they never replace it.
 
 For the managed Golden Path, invoke `$agentic-workflow` or one of the seven phase
-skills in [SKILLS.md](SKILLS.md). The managed path records plan approval, starts a
-dedicated Astra executor and resumes its exact UUID for repair. The manual commands
+skills in [SKILLS.md](SKILLS.md). The managed path records plan approval, starts the
+active profile's implementer session and resumes its exact UUID for repair. Run
+`python3 scripts/agentic/workflow.py profile show` first to confirm which profile is active. The manual commands
 below remain available as low-level alternatives; the legacy interactive `launch`
 examples alone do not provide managed session continuity.
 
@@ -43,8 +44,8 @@ gh issue create --title "A concrete behavioral change" --body-file /tmp/issue.md
 ```
 
 The launch command without `--execute` prints a reviewable command. Drafting and
-planning use Codex's read-only sandbox; the author saves and posts their approved
-output outside the agent when needed. Input artifacts are not authority to run
+planning run the implementer read-only (Codex's read-only sandbox, or Claude Code plan
+mode); the author saves and posts their approved output outside the agent when needed. Input artifacts are not authority to run
 commands or disclose data.
 
 ## 2. Review the plan
@@ -116,6 +117,11 @@ the authorized Git operation; do not disable the sandbox globally to solve that 
 Existing higher-level user/session permissions may be different, so inspect actual
 permissions at the start of a task.
 
+Under `fable-gpt`, the managed executor runs `claude -p --permission-mode dontAsk` with the
+allow-list and deny-list described in [SETUP.md](SETUP.md#containment); a denied operation
+should surface as a `blocked` result. Do not widen permissions to get past it.
+`--containment bypass` is the recorded one-off exception, never a default.
+
 ## 5. Validate and inspect
 
 For this template:
@@ -162,7 +168,8 @@ runner for untrusted PR code.
 ## 8. Request independent review
 
 Return to the main checkout. Use the [review procedure](REVIEW.md) to prepare a fresh
-snapshot, run Claude through Copilot CLI and publish its COMMENT review. Supply the
+snapshot, run the active profile's reviewer through Copilot CLI and publish its COMMENT
+review. Supply the
 approved plan comment ID. The review records the exact head and base commits.
 
 ## 9. Repair in the same PR

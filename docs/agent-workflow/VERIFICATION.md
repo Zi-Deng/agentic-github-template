@@ -263,3 +263,37 @@ validation does not make a changed head reviewed. The enlarged bootstrap diff al
 exceeds the unchanged 300 KB packet cap; any future review must explicitly resolve that
 size limit, for example through a scoped larger packet allowance. The 400-credit setting
 alone does not change the diff cap. Native managed executor completion remains blocked.
+
+## Dual-profile implementer/reviewer — 2026-09-24
+
+Contract: [issue #10](https://github.com/Zi-Deng/agentic-github-template/issues/10) and its
+[approved plan](https://github.com/Zi-Deng/agentic-github-template/issues/10#issuecomment-5820454296);
+implementation in [PR #11](https://github.com/Zi-Deng/agentic-github-template/pull/11).
+The maintainer authorized a one-off exception to the Astra-only policy: the coordinating
+Claude Code session (2.1.281, `claude-fable-5-1`) implemented the change directly in the
+registered worktree `issue-10-dual-profile`, created from the clean control clone.
+
+### Local evidence
+
+- **159 regression tests passed** on CPython 3.12.3 (`.agentic-local/validation-venv`),
+  up from 112: new `test_profiles.py`, `test_skills.py`, `ClaudeSessionTests` and
+  `LegacyPinTests` in `test_sessions.py`, and pipeline/launch additions. Claude runs are
+  exercised with a local process double that reproduces the `system/init` and `result`
+  events; no model was called by the suite.
+- Ruff 0.16.7 lint and format checks passed; `scripts/check_repository.py` validated the
+  workflow YAML, the eight byte-identical `.claude/skills` copies, the forbidden
+  instruction files and the `.gitignore` entry.
+- The existing Codex session tests pass unchanged under the default `astra-claude`
+  profile; the existing finish and pipeline tests pass with executor records that carry
+  no backend pin, exercising the legacy fallback.
+
+### Pending live evidence (post-merge)
+
+- One Copilot call with `--model gpt-6-astra` to confirm the CLI ID and the reported model
+  in `usage.json`.
+- Claude probes: `system/init` reports the pre-assigned `session_id` and `dontAsk`;
+  `--json-schema` yields `structured_output` on a fresh and a resumed run; OAuth works with
+  `--setting-sources user,project --strict-mcp-config`; AGENTS.md is loaded; the transcript
+  appears under `~/.claude/projects/`.
+- The `fable-gpt` pilot on the stale-worktree `doctor` warning issue, including the single
+  recorded `--containment bypass` run and the switch back to `astra-claude`.
