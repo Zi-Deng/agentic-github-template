@@ -396,9 +396,7 @@ def worktree_report(repo):
         try:
             entry["merged_pr"] = merged_pull_request(repo, entry["branch"])
         except LOOKUP_ERRORS as exc:
-            notes.append(
-                f"merged PR lookup failed; merged_pr reported as null ({type(exc).__name__}: {exc})"
-            )
+            notes.append(f"merged PR lookup failed; merged_pr reported as null ({type(exc).__name__}: {exc})")
         entry["note"] = "; ".join(notes) or None
         entries.append(entry)
     return entries
