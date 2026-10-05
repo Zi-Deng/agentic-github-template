@@ -38,6 +38,13 @@ class GitFixture(unittest.TestCase):
         self.remote = self.parent / "origin.git"
         git(self.parent, "init", "--bare", "--initial-branch=trunk", self.remote)
         git(self.root, "init", "--initial-branch=trunk")
+        # Git 2.47+ detaches auto-maintenance after fetches and receive-pack can run gc in the
+        # background; a lingering process races the temporary directory's removal on hosted
+        # runners ("Directory not empty: origin.git/objects"). Fixtures never need maintenance.
+        for repository in (self.remote, self.root):
+            git(repository, "config", "maintenance.auto", "false")
+            git(repository, "config", "gc.auto", "0")
+            git(repository, "config", "receive.autogc", "false")
         git(self.root, "config", "user.email", "test@example.invalid")
         git(self.root, "config", "user.name", "Workflow Test")
         git(self.root, "config", "commit.gpgsign", "false")
