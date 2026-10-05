@@ -1,6 +1,7 @@
 """Exercise destructive boundaries using real temporary Git repositories."""
 
 import contextlib
+import http.client
 import io
 import json
 import os
@@ -359,10 +360,16 @@ class WorktreeReportTests(GitFixture):
         self.assertNotIn("cleanup-task", warning)
         self.assertTrue((self.task_path / "valuable.cache").exists())
 
-    def test_missing_worktree_directory_is_reported_and_left_registered(self):
+    def test_missing_directory_gets_recovery_guidance_without_a_repository_wide_prune(self):
         self.merged()
         self.closed_pulls([self.closed_pull()])
+        # An unrelated worktree on an unmounted volume looks exactly like the vanished task directory.
+        unavailable = self.parent / "unavailable"
+        git(self.root, "worktree", "add", "-b", "unrelated", str(unavailable), "trunk")
         shutil.rmtree(self.task_path)
+        shutil.rmtree(unavailable)
+        before = self.registration()
+        self.assertIn(str(unavailable), before[0])
         report = workflow.worktree_report(self.repo)
         self.assertEqual(
             (report[0]["path"], report[0]["exists"], report[0]["clean"], report[0]["merged_pr"]),
@@ -370,8 +377,68 @@ class WorktreeReportTests(GitFixture):
         )
         [warning] = workflow.worktree_messages(report)
         self.assertTrue(warning.startswith("warning: issue-12-correct-value "))
-        self.assertIn("git worktree prune && python3 scripts/agentic/workflow.py cleanup-task 31", warning)
-        self.assertIn(str(self.task_path), git(self.root, "worktree", "list", "--porcelain"))
+        self.assertIn("docs/agent-workflow/FINISH.md", warning)
+        self.assertIn("python3 scripts/agentic/workflow.py cleanup-task 31", warning)
+        self.assertNotIn("prune", warning)
+        self.assertNotIn("--force", warning)
+        self.assertEqual(self.registration(), before)
+
+    def test_report_does_not_refresh_a_worktree_index(self):
+        self.merged()
+        self.closed_pulls([self.closed_pull()])
+        index = Path(git(self.task_path, "rev-parse", "--path-format=absolute", "--git-path", "index"))
+        # Stale stat information with unchanged content is what makes plain `git status` rewrite the index.
+        os.utime(self.task_path / "code.py", (946_684_800, 946_684_800))
+        before = index.read_bytes()
+        report = workflow.worktree_report(self.repo)
+        self.assertTrue(report[0]["clean"])
+        self.assertEqual(index.read_bytes(), before)
+
+    def test_transport_interruptions_degrade_and_later_worktrees_still_report(self):
+        self.commit_task()
+        second = self.parent / "issue-13-second"
+        git(self.root, "worktree", "add", "-b", "issue-13-second", str(second), "trunk")
+        merged_second = self.closed_pull(number=32)
+        merged_second["head"]["ref"] = "issue-13-second"
+
+        def api(suffix, **kwargs):
+            if suffix.startswith("pulls?head=example:issue-12-"):
+                raise http.client.IncompleteRead(b"partial")
+            if suffix.startswith("pulls?head=example:issue-13-"):
+                return [merged_second]
+            return self.api(suffix, **kwargs)
+
+        self.repo.api = api
+        report = {entry["branch"]: entry for entry in workflow.worktree_report(self.repo)}
+        self.assertEqual(sorted(report), ["issue-12-correct-value", "issue-13-second"])
+        self.assertIsNone(report["issue-12-correct-value"]["merged_pr"])
+        self.assertIn("IncompleteRead", report["issue-12-correct-value"]["note"])
+        self.assertEqual(report["issue-13-second"]["merged_pr"], 32)
+        self.assertEqual(
+            sorted(workflow.worktree_messages(list(report.values()))),
+            [
+                f"note: issue-12-correct-value: {report['issue-12-correct-value']['note']}",
+                "warning: issue-13-second was merged as PR #32; "
+                "run: python3 scripts/agentic/workflow.py cleanup-task 32",
+            ],
+        )
+
+    def test_merged_pull_request_lookup_follows_pagination(self):
+        self.merged()
+        observed = []
+
+        def api(suffix, **kwargs):
+            if not suffix.startswith("pulls?"):
+                return self.api(suffix, **kwargs)
+            observed.append((suffix, kwargs.get("paginate")))
+            first_page = [self.closed_pull(number=30, merged_at=None)]
+            # Only a paginated request reaches the merged PR on the second page.
+            return first_page + [self.closed_pull()] if kwargs.get("paginate") else first_page
+
+        self.repo.api = api
+        report = workflow.worktree_report(self.repo)
+        self.assertEqual(observed, [(self.PULLS, True)])
+        self.assertEqual(report[0]["merged_pr"], 31)
 
     def test_unmerged_fork_and_absent_pull_requests_produce_no_warning(self):
         self.commit_task()

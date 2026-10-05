@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import fcntl
+import http.client
 import json
 import os
 import re
@@ -340,14 +341,25 @@ def cleanup_task(repo, number, expected_sha=None):
 
 
 TASK_BRANCH = re.compile(r"issue-([1-9][0-9]*)-[a-z0-9]+(?:-[a-z0-9]+)*")
-# Diagnostics degrade on these; doctor must never fail because one lookup did.
-LOOKUP_ERRORS = (WorkflowError, OSError, ValueError, LookupError, TypeError, subprocess.TimeoutExpired)
+# Diagnostics degrade on these; doctor must never fail because one lookup did. http.client errors
+# such as IncompleteRead bypass the transport's OSError/ValueError normalization.
+LOOKUP_ERRORS = (
+    WorkflowError,
+    OSError,
+    ValueError,
+    LookupError,
+    TypeError,
+    http.client.HTTPException,
+    subprocess.TimeoutExpired,
+)
+# --no-optional-locks keeps the diagnostic from refreshing (writing) another worktree's index.
+STATUS_ARGS = ["--no-optional-locks", "status", "--porcelain", "--ignored", "--untracked-files=all"]
 
 
 def merged_pull_request(repo, branch):
     """Return the number of the same-repository merged PR for a task branch, or None."""
     owner = repo.name.split("/")[0]
-    for pull in repo.api(f"pulls?head={owner}:{branch}&state=closed"):
+    for pull in repo.api(f"pulls?head={owner}:{branch}&state=closed", paginate=True):
         head = pull.get("head") or {}
         if (
             pull.get("merged_at")
@@ -378,15 +390,15 @@ def worktree_report(repo):
         notes = []
         if entry["exists"]:
             try:
-                entry["clean"] = not run(
-                    ["git", "-C", path, "status", "--porcelain", "--ignored", "--untracked-files=all"]
-                ).stdout
+                entry["clean"] = not run(["git", "-C", path, *STATUS_ARGS]).stdout
             except (WorkflowError, OSError, subprocess.TimeoutExpired):
                 notes.append("git status failed; clean reported as null")
         try:
             entry["merged_pr"] = merged_pull_request(repo, entry["branch"])
         except LOOKUP_ERRORS as exc:
-            notes.append(f"merged PR lookup failed; merged_pr reported as null ({exc})")
+            notes.append(
+                f"merged PR lookup failed; merged_pr reported as null ({type(exc).__name__}: {exc})"
+            )
         entry["note"] = "; ".join(notes) or None
         entries.append(entry)
     return entries
@@ -403,10 +415,13 @@ def worktree_messages(entries):
             continue
         cleanup = f"python3 scripts/agentic/workflow.py cleanup-task {merged}"
         if not entry["exists"]:
-            # Git refuses to delete a branch while its vanished worktree stays registered.
+            # Git refuses to delete a branch while its vanished worktree stays registered, but a
+            # repository-wide `git worktree prune` could also discard other unavailable worktrees,
+            # so FINISH.md walks through inspecting and recovering the registration first.
             lines.append(
-                f"warning: {branch} was merged as PR #{merged} and its worktree directory is missing; "
-                f"run from the main checkout: git worktree prune && {cleanup}"
+                f"warning: {branch} was merged as PR #{merged} but its worktree directory is missing while "
+                "its registration remains; follow the missing-directory steps in "
+                f"docs/agent-workflow/FINISH.md before running {cleanup}"
             )
         elif entry["clean"]:
             lines.append(f"warning: {branch} was merged as PR #{merged}; run: {cleanup}")
