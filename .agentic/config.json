@@ -48,6 +48,6 @@
   "max_diff_bytes": 300000,
   "max_source_file_bytes": 250000,
   "max_snapshot_bytes": 12000000,
-  "required_checks": ["quality"],
+  "required_checks": ["quality", "agentic-quality"],
   "domain_rubric": "docs/agent-workflow/domain-review.md"
 }

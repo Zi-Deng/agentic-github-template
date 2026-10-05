@@ -71,6 +71,7 @@ class FinishGateTests(unittest.TestCase):
     def test_required_checks_accept_all_passing_server_required_checks(self):
         checks = [
             {"name": "quality", "bucket": "pass", "state": "SUCCESS"},
+            {"name": "agentic-quality", "bucket": "pass", "state": "SUCCESS"},
             {"name": "security", "bucket": "pass", "state": "SUCCESS"},
         ]
         with self.gh(self.response(checks)) as command:
@@ -79,15 +80,18 @@ class FinishGateTests(unittest.TestCase):
         self.assertEqual(command.call_args.args[0][:4], ["gh", "pr", "checks", "31"])
 
     def test_required_checks_reject_nonpassing_missing_and_malformed_evidence(self):
-        passing = [{"name": "quality", "bucket": "pass"}]
+        passing = [{"name": "quality", "bucket": "pass"}, {"name": "agentic-quality", "bucket": "pass"}]
+        portable = [{"name": "agentic-quality", "bucket": "pass"}]
         cases = [
-            (0, [{"name": "quality", "bucket": "pending"}], "Every required check"),
-            (0, [{"name": "quality", "bucket": "fail"}], "Every required check"),
-            (8, [{"name": "quality", "bucket": "pending"}], "pending"),
-            (1, [{"name": "quality", "bucket": "fail"}], "failing"),
-            (0, [{"name": "quality", "bucket": "skipping"}], "Every required check"),
+            (0, [{"name": "quality", "bucket": "pending"}, *portable], "Every required check"),
+            (0, [{"name": "quality", "bucket": "fail"}, *portable], "Every required check"),
+            (8, [{"name": "quality", "bucket": "pending"}, *portable], "pending"),
+            (1, [{"name": "quality", "bucket": "fail"}, *portable], "failing"),
+            (0, [{"name": "quality", "bucket": "skipping"}, *portable], "Every required check"),
             (0, [], "configuration"),
             (0, [{"name": "security", "bucket": "pass"}], "policy"),
+            # Both configured checks must be server-required; one alone does not match policy.
+            (0, [{"name": "quality", "bucket": "pass"}], "policy"),
             (0, passing + [{"name": "security", "bucket": "fail"}], "Every required check"),
             (1, passing, "gh exit 1"),
             (2, passing, "gh exit 2"),

@@ -2,12 +2,14 @@
 
 import errno
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from test_workflow import workflow
+from test_workflow import SOURCE, workflow
 
 # The shared fixture establishes the scripts import path.
 # isort: split
@@ -39,6 +41,28 @@ class ArchiveTests(unittest.TestCase):
             return original(source, destination)
 
         return patch.object(archives, "rename_noreplace", side_effect=rename)
+
+    def test_coordinator_modules_import_without_ctypes(self):
+        # Only the finishing helper's rename needs ctypes; every coordinator command must
+        # import even where the interpreter's _ctypes extension is broken.
+        code = (
+            "import sys; sys.modules['ctypes'] = None; "
+            "import archives, finish, pipeline, profiles, review, sessions, tasks, workflow; "
+            "from workflow import WorkflowError\n"
+            "try:\n"
+            "    archives.rename_noreplace('/nonexistent/source', '/nonexistent/destination')\n"
+            "except WorkflowError as exc:\n"
+            "    print('closed:', exc)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", code],
+            cwd=SOURCE / "scripts/agentic",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("closed: Atomic no-replace rename needs a working ctypes module", result.stdout)
 
     def test_rename_preserves_links_without_reading_their_targets(self):
         outside = self.parent / "outside"
