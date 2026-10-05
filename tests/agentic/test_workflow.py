@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 SOURCE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SOURCE / "scripts/agentic"))
@@ -287,6 +287,128 @@ class WorktreeTests(GitFixture):
             result = workflow.merge_preflight(self.repo, 31, self.head)
         self.assertIn("--match-head-commit " + self.head, result["command"])
         self.assertFalse(self.pr_data["merged"])
+
+
+class WorktreeReportTests(GitFixture):
+    PULLS = "pulls?head=example:issue-12-correct-value&state=closed"
+
+    def closed_pulls(self, pulls):
+        queries = []
+
+        def api(suffix, **kwargs):
+            if not suffix.startswith("pulls?"):
+                return self.api(suffix, **kwargs)
+            queries.append(suffix)
+            if isinstance(pulls, Exception):
+                raise pulls
+            return pulls
+
+        self.repo.api = api
+        return queries
+
+    @staticmethod
+    def closed_pull(number=31, repository="example/project", merged_at="2026-10-05T12:00:00Z"):
+        return {
+            "number": number,
+            "merged_at": merged_at,
+            "head": {"ref": "issue-12-correct-value", "repo": {"full_name": repository}},
+        }
+
+    def registration(self):
+        return (git(self.root, "worktree", "list", "--porcelain"), git(self.root, "branch", "--list"))
+
+    def test_merged_clean_worktree_gets_one_warning_with_the_cleanup_command(self):
+        self.merged()
+        queries = self.closed_pulls([self.closed_pull()])
+        before = self.registration()
+        report = workflow.worktree_report(self.repo)
+        self.assertEqual(queries, [self.PULLS])
+        self.assertEqual(
+            report,
+            [
+                {
+                    "issue": 12,
+                    "branch": "issue-12-correct-value",
+                    "path": str(self.task_path),
+                    "exists": True,
+                    "clean": True,
+                    "merged_pr": 31,
+                    "note": None,
+                }
+            ],
+        )
+        self.assertEqual(
+            workflow.worktree_messages(report),
+            [
+                "warning: issue-12-correct-value was merged as PR #31; "
+                "run: python3 scripts/agentic/workflow.py cleanup-task 31"
+            ],
+        )
+        self.assertEqual(self.registration(), before)
+        self.assertEqual((self.task_path / "code.py").read_text(), "value = 2\n")
+
+    def test_dirty_merged_worktree_points_to_the_finishing_procedure(self):
+        self.merged()
+        self.closed_pulls([self.closed_pull()])
+        (self.task_path / "valuable.cache").write_text("experiment result")
+        report = workflow.worktree_report(self.repo)
+        self.assertEqual((report[0]["clean"], report[0]["merged_pr"]), (False, 31))
+        [warning] = workflow.worktree_messages(report)
+        self.assertTrue(warning.startswith("warning: issue-12-correct-value "))
+        self.assertIn("docs/agent-workflow/FINISH.md", warning)
+        self.assertNotIn("cleanup-task", warning)
+        self.assertTrue((self.task_path / "valuable.cache").exists())
+
+    def test_missing_worktree_directory_is_reported_and_left_registered(self):
+        self.merged()
+        self.closed_pulls([self.closed_pull()])
+        shutil.rmtree(self.task_path)
+        report = workflow.worktree_report(self.repo)
+        self.assertEqual(
+            (report[0]["path"], report[0]["exists"], report[0]["clean"], report[0]["merged_pr"]),
+            (str(self.task_path), False, None, 31),
+        )
+        [warning] = workflow.worktree_messages(report)
+        self.assertTrue(warning.startswith("warning: issue-12-correct-value "))
+        self.assertIn("git worktree prune && python3 scripts/agentic/workflow.py cleanup-task 31", warning)
+        self.assertIn(str(self.task_path), git(self.root, "worktree", "list", "--porcelain"))
+
+    def test_unmerged_fork_and_absent_pull_requests_produce_no_warning(self):
+        self.commit_task()
+        for pulls in (
+            [],
+            [self.closed_pull(merged_at=None)],
+            [self.closed_pull(repository="outsider/project")],
+        ):
+            with self.subTest(pulls=pulls):
+                self.closed_pulls(pulls)
+                report = workflow.worktree_report(self.repo)
+                self.assertEqual((report[0]["merged_pr"], report[0]["note"]), (None, None))
+                self.assertEqual(workflow.worktree_messages(report), [])
+
+    def test_lookup_failures_degrade_to_null_with_a_note(self):
+        self.commit_task()
+        self.closed_pulls(workflow.WorkflowError("GitHub API HTTP 403; response body withheld"))
+        report = workflow.worktree_report(self.repo)
+        self.assertEqual((report[0]["merged_pr"], report[0]["clean"]), (None, True))
+        self.assertIn("HTTP 403", report[0]["note"])
+        self.assertEqual(
+            workflow.worktree_messages(report),
+            [f"note: issue-12-correct-value: {report[0]['note']}"],
+        )
+        with patch.object(
+            workflow.Repo, "info", new_callable=PropertyMock, side_effect=workflow.WorkflowError("gh offline")
+        ):
+            report = workflow.worktree_report(self.repo)
+        self.assertIsNone(report[0]["merged_pr"])
+        self.assertIn("gh offline", report[0]["note"])
+
+    def test_main_checkout_and_non_task_worktrees_are_not_reported(self):
+        queries = self.closed_pulls([self.closed_pull()])
+        self.assertEqual(workflow.worktree_report(self.repo), [])
+        git(self.root, "worktree", "add", "-b", "scratch", str(self.parent / "scratch"), "trunk")
+        self.assertEqual(workflow.worktree_report(self.repo), [])
+        self.assertEqual(queries, [])
 
 
 class ReviewTests(GitFixture):

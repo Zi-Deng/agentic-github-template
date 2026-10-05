@@ -86,9 +86,11 @@ OS's Python venv package or create the environment using an existing managed Pyt
 For this workstation, `micromamba run -n ml python -m venv .venv` provides that route
 without modifying the shared `ml` environment.
 
-`doctor` checks tools, Git state, local configuration and `gh` authentication. It does
-not prove Copilot entitlement, model access, ruleset enforcement or successful CI.
-Those need the first live PR described below.
+`doctor` checks tools, Git state, local configuration and `gh` authentication, and lists
+registered task worktrees whose pull request has already merged
+([finding finished worktrees](FINISH.md#finding-finished-worktrees)). It does not prove
+Copilot entitlement, model access, ruleset enforcement or successful CI. Those need the
+first live PR described below.
 
 ## Profiles and Claude Code containment
 

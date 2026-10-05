@@ -166,3 +166,16 @@ The low-level `cleanup-task` helper retains its original refusal to delete ignor
 files. The human finishing script archives them first and calls that guarded cleanup
 only after the task worktree meets its preconditions. The human owns any decision to
 abandon an unmerged PR; abandonment is not successful finishing.
+
+## Finding finished worktrees
+
+`python3 scripts/agentic/workflow.py doctor` lists every registered `issue-N-slug` task
+worktree under `worktrees`: issue number, branch, path, whether the directory exists, whether
+it is clean (no changed, untracked or ignored files) and the merged pull request for its
+branch, looked up read-only through the GitHub API for same-repository heads. For each
+branch with a merged pull request, `doctor` prints one `warning:` line on stderr naming the
+branch and the next command: `workflow.py cleanup-task PR` for a clean worktree,
+`git worktree prune` followed by that cleanup when the directory has vanished but its
+registration remains, or this finishing procedure when files would otherwise be lost. A
+failed lookup reports `merged_pr: null` with a `note:` line. The report changes nothing on
+disk, leaves the doctor exit status unchanged, and does not replace the guards above.

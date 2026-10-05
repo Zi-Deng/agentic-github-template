@@ -339,6 +339,85 @@ def cleanup_task(repo, number, expected_sha=None):
         return {"cleaned": branch, "remote_branch_deleted": False}
 
 
+TASK_BRANCH = re.compile(r"issue-([1-9][0-9]*)-[a-z0-9]+(?:-[a-z0-9]+)*")
+# Diagnostics degrade on these; doctor must never fail because one lookup did.
+LOOKUP_ERRORS = (WorkflowError, OSError, ValueError, LookupError, TypeError, subprocess.TimeoutExpired)
+
+
+def merged_pull_request(repo, branch):
+    """Return the number of the same-repository merged PR for a task branch, or None."""
+    owner = repo.name.split("/")[0]
+    for pull in repo.api(f"pulls?head={owner}:{branch}&state=closed"):
+        head = pull.get("head") or {}
+        if (
+            pull.get("merged_at")
+            and head.get("ref") == branch
+            and (head.get("repo") or {}).get("full_name") == repo.name
+        ):
+            return positive(pull["number"])
+    return None
+
+
+def worktree_report(repo):
+    """Describe each registered issue-N-slug task worktree; reads Git and GitHub, writes nothing."""
+    entries = []
+    for tree in repo.worktrees():
+        match = TASK_BRANCH.fullmatch(tree.get("branch", "").removeprefix("refs/heads/"))
+        path = Path(tree["worktree"])
+        if not match or path.resolve() == repo.main:
+            continue
+        entry = {
+            "issue": int(match[1]),
+            "branch": match[0],
+            "path": str(path),
+            "exists": path.is_dir(),
+            "clean": None,
+            "merged_pr": None,
+            "note": None,
+        }
+        notes = []
+        if entry["exists"]:
+            try:
+                entry["clean"] = not run(
+                    ["git", "-C", path, "status", "--porcelain", "--ignored", "--untracked-files=all"]
+                ).stdout
+            except (WorkflowError, OSError, subprocess.TimeoutExpired):
+                notes.append("git status failed; clean reported as null")
+        try:
+            entry["merged_pr"] = merged_pull_request(repo, entry["branch"])
+        except LOOKUP_ERRORS as exc:
+            notes.append(f"merged PR lookup failed; merged_pr reported as null ({exc})")
+        entry["note"] = "; ".join(notes) or None
+        entries.append(entry)
+    return entries
+
+
+def worktree_messages(entries):
+    """Stderr lines for doctor: one note per degraded entry and one warning per merged task branch."""
+    lines = []
+    for entry in entries:
+        branch, merged = entry["branch"], entry["merged_pr"]
+        if entry["note"]:
+            lines.append(f"note: {branch}: {entry['note']}")
+        if merged is None:
+            continue
+        cleanup = f"python3 scripts/agentic/workflow.py cleanup-task {merged}"
+        if not entry["exists"]:
+            # Git refuses to delete a branch while its vanished worktree stays registered.
+            lines.append(
+                f"warning: {branch} was merged as PR #{merged} and its worktree directory is missing; "
+                f"run from the main checkout: git worktree prune && {cleanup}"
+            )
+        elif entry["clean"]:
+            lines.append(f"warning: {branch} was merged as PR #{merged}; run: {cleanup}")
+        else:
+            lines.append(
+                f"warning: {branch} was merged as PR #{merged} but its worktree holds changed, untracked or "
+                "ignored files; follow the finishing procedure in docs/agent-workflow/FINISH.md"
+            )
+    return lines
+
+
 def draft_pr(repo, title, body):
     if os.environ.get("AGENTIC_EXECUTOR_ROLE"):
         raise WorkflowError("Managed executors prepare PR text; the coordinator publishes it")
@@ -623,12 +702,14 @@ def main():
                 )
             except WorkflowError as exc:
                 selection_view = {"error": str(exc)}
+            worktrees = worktree_report(repo)
             result = {
                 "root": str(repo.root),
                 "main": str(repo.main),
                 "tools": tools,
                 "auth": auth,
                 "git_clean": not bool(repo.git("status", "--porcelain")),
+                "worktrees": worktrees,
                 "github_authenticated": auth["gh"] is True,
                 "profile": profiles_view,
                 "active_implementer_backend": backend,
@@ -638,6 +719,8 @@ def main():
                 "config": configuration(repo.root),
             }
             print(json.dumps(result, indent=2))
+            for line in worktree_messages(worktrees):
+                print(line, file=sys.stderr)
             healthy = (
                 all(tools[tool] for tool in ("git", "gh", "copilot"))
                 and auth["gh"] is True
