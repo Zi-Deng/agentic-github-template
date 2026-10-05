@@ -166,3 +166,25 @@ The low-level `cleanup-task` helper retains its original refusal to delete ignor
 files. The human finishing script archives them first and calls that guarded cleanup
 only after the task worktree meets its preconditions. The human owns any decision to
 abandon an unmerged PR; abandonment is not successful finishing.
+
+## Finding finished worktrees
+
+`python3 scripts/agentic/workflow.py doctor` lists every registered `issue-N-slug` task
+worktree under `worktrees`: issue number, branch, path, whether the directory exists, whether
+it is clean (no changed, untracked or ignored files) and the merged pull request for its
+branch, looked up read-only through the GitHub API for same-repository heads. For each
+branch with a merged pull request, `doctor` prints one `warning:` line on stderr naming the
+branch and the next command: `workflow.py cleanup-task PR` for a clean worktree, or this
+finishing procedure when files would otherwise be lost or the directory is missing. A failed
+lookup reports `merged_pr: null` with a `note:` line. Status runs with `--no-optional-locks`,
+so the report refreshes no index; it changes nothing on disk, leaves the doctor exit status
+unchanged, and does not replace the guards above.
+
+A missing directory means `.git/worktrees` still holds the registration while the path is
+gone or merely unavailable, such as an unmounted volume, and Git then refuses to delete the
+branch. Do not run `git worktree prune` as a reflex: it is repository-wide and discards the
+administrative files, index and reflog of every unlocked registration whose directory is
+unavailable. First run `git worktree list --porcelain` from the main checkout and, for every
+other entry marked `prunable`, restore its directory or protect it with `git worktree lock`.
+Only then prune and run `cleanup-task PR`, which still verifies the merged head, exact local
+tip and registration before deleting anything.
