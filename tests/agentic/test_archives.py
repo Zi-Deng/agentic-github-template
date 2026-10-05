@@ -43,11 +43,16 @@ class ArchiveTests(unittest.TestCase):
         return patch.object(archives, "rename_noreplace", side_effect=rename)
 
     def test_coordinator_modules_import_without_ctypes(self):
-        # Only the finishing helper's rename needs ctypes; every coordinator command must
-        # import even where the interpreter's _ctypes extension is broken.
+        # Only the finishing helper's rename needs ctypes; every module shipped under
+        # scripts/agentic must import even where the interpreter's _ctypes extension is broken,
+        # so the list is discovered rather than hard-coded.
+        modules = sorted(path.stem for path in (SOURCE / "scripts/agentic").glob("*.py"))
+        self.assertIn("archives", modules)
+        self.assertGreater(len(modules), 15)
         code = (
             "import sys; sys.modules['ctypes'] = None; "
-            "import archives, finish, pipeline, profiles, review, sessions, tasks, workflow; "
+            f"import {', '.join(modules)}; "
+            "assert 'ctypes' not in sys.modules or sys.modules['ctypes'] is None; "
             "from workflow import WorkflowError\n"
             "try:\n"
             "    archives.rename_noreplace('/nonexistent/source', '/nonexistent/destination')\n"
@@ -63,6 +68,16 @@ class ArchiveTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("closed: Atomic no-replace rename needs a working ctypes module", result.stdout)
+
+    def test_rename_fails_closed_when_the_dynamic_loader_breaks(self):
+        # _ctypes may import yet fail to load libc or libffi; that is OSError, not ImportError.
+        import ctypes
+
+        for failure in (OSError("libffi unavailable"), RuntimeError("ffi closure allocation failed")):
+            with self.subTest(failure=type(failure).__name__):
+                with patch.object(ctypes, "CDLL", side_effect=failure):
+                    with self.assertRaisesRegex(workflow.WorkflowError, "working ctypes module"):
+                        archives.rename_noreplace(self.root / "missing-source", self.root / "destination")
 
     def test_rename_preserves_links_without_reading_their_targets(self):
         outside = self.parent / "outside"
