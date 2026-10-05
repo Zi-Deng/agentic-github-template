@@ -146,6 +146,8 @@ def validate_workflows(root, required):
     assert "profile:" in hosted and "AGENTIC_PROFILE" in hosted, "hosted review must accept a profile input"
     assert "register-reviewer copilot" in hosted, "hosted review must register the pinned Copilot binary"
     assert "--require-reviewer-backend copilot" in hosted, "hosted review is Copilot-only"
+    assert "review.py qualify" in hosted, "hosted review must end with the coverage qualification gate"
+    assert "always() && inputs.publish" in hosted, "hosted publication must also publish INCOMPLETE reports"
     assert "CLAUDE_CODE_OAUTH_TOKEN" not in hosted and "claude-review-token" not in hosted
 
 

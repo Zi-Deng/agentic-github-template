@@ -1,8 +1,10 @@
-# Independent Copilot review
+# Independent provider review
 
-The reviewer runs in a new Copilot CLI process and receives committed artifacts,
-not the implementation conversation. Its model-facing tools are `view`, `grep` and
-`glob`. The wrapper performs Git/GitHub operations outside that model process.
+The reviewer runs in a new provider process (the pinned Copilot CLI today; a native
+Claude Code adapter follows) and receives committed artifacts, not the implementation
+conversation. Its model-facing tools are read-only `view`, `grep` and `glob`. The wrapper
+performs Git/GitHub operations outside that model process and qualifies a review only
+when it observed the reviewer read every required material; see [COVERAGE.md](COVERAGE.md).
 
 ## Managed skill procedure
 
@@ -33,9 +35,16 @@ path in the next commands:
 
 ```bash
 python3 scripts/agentic/review.py run /absolute/path/printed/by/prepare
-# Read review.md and confirm its evidence before publication.
+# Read review.md, coverage.json and diagnostics.json before publication.
 python3 scripts/agentic/review.py publish /absolute/path/printed/by/prepare
+python3 scripts/agentic/review.py qualify /absolute/path/printed/by/prepare
+python3 scripts/agentic/review.py verify-publication /absolute/path/printed/by/prepare
 ```
+
+`run` exits 2 when the saved report is INCOMPLETE; `qualify` fails for incomplete or
+pre-coverage evidence; `verify-publication` compares the published body byte for byte.
+A repair round passes `--prior-review` with the previous directory so unread material
+and prior findings stay accountable.
 
 `prepare` checks the plan's issue association and the current PR head/base. It fetches
 the PR and base refs, computes the merge base, collects the complete textual diff,
@@ -50,10 +59,13 @@ and data directories are excluded; a diff touching such paths is refused before 
 transmitted. This path policy is a baseline, not a content-based secret detector.
 Inspect your own source and augment exclusions for a project's restricted paths.
 
-The default budgets are 300 KB of diff, 250 KB per source file, 12 MB of total text,
-15 minutes and 400 Copilot AI credits (Copilot CLI 1.0.83 refuses an allowance below 30). These are operational choices, not claims
-about model capacity or price. Per-file omissions are recorded explicitly; oversized
-diffs and total snapshots fail rather than silently presenting a partial review as
+The default budgets are 250 KB per source file, 12 MB of total text, 15 minutes and
+400 Copilot AI credits (Copilot CLI 1.0.83 refuses an allowance below 30); `max_diff_bytes`
+is `null` because the required-material inventory bounds each item at 120 lines or
+16 KB and each navigation scope at 12 items, 800 lines or 64 KB. These are operational
+choices, not claims about model capacity or price. Per-file omissions are recorded
+explicitly and remain unsupported obligations; a change the reviewer cannot read in one
+request comes back INCOMPLETE rather than silently presenting a partial review as
 complete. Credit limits are provider controls and may overshoot by a request already
 in flight. Split broad changes before raising budgets.
 
@@ -66,10 +78,14 @@ identity. Inspect `usage.json` and provider session metadata when that matters.
 The tool controls follow the [Copilot CLI reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)
 and [custom agent configuration](https://docs.github.com/en/copilot/reference/custom-agents-configuration).
 
-`publish` rechecks head and base, verifies snapshot and report hashes, and creates a
-COMMENT review with an explicit `commit_id`. Repeated publication of the same report
-returns its existing review URL. Any new head/base requires a new snapshot. Findings
-do not automatically become approval, a green required check, or resolved threads.
+`publish` rechecks head and base, verifies snapshot, report, diagnostics and coverage
+hashes, and creates a COMMENT review with an explicit `commit_id` whose header states
+**coverage-qualified static inspection** or **INCOMPLETE static inspection — not ready**.
+Repeated publication of the same report returns its existing review URL. Any new
+head/base requires a new snapshot. Only a qualified published report is designated;
+`merge-preflight PR --reviewed-sha SHA --review-directory DIR` and the finishing gates
+require that designation plus an exact match with the published body. Findings do not
+automatically become approval, a green required check, or resolved threads.
 
 The review directory is private working state, not a cryptographic attestation against
 its own owner. Its hashes catch accidental edits. A user able to rewrite the manifest
@@ -109,12 +125,15 @@ direction**. Use original repository paths and line numbers from the mapped sour
 not the numbered snapshot filenames. Demonstrate the reachable code path or provide
 a reproducible test proposal. Do not invent executed commands.
 
-End with:
+The final response is one compact JSON object matching the packet's `report-schema.json`
+(`schema_version: 2`, `inventory_sha256` copied from `inventory-sha256.txt`, `findings`,
+`reviewed` listing positively inspected required IDs, `incomplete` grouping specific
+unread or unsupported IDs with a reason, and `limitations`). Omitted IDs stay unread and
+block qualification; general limitations appear once. The wrapper credits a `reviewed`
+claim only when the literal tool results covered its complete range.
 
-1. Acceptance criteria verified or still unsupported.
-2. Validation independently executed, if any; the static CLI reviewer executes none.
-3. Limitations, omitted source, inaccessible artifacts and residual risks.
-
+Limitations must state that the reviewer executed no tests, list omitted source and
+inaccessible artifacts, and separate residual risks from supported findings.
 Explicitly state when no material finding is supported. Treat uncertain concerns as
 questions, not proven defects. Check negative inputs, missing data, ties, NaNs,
 interruption, compatibility, concurrency and numerical boundaries where relevant.

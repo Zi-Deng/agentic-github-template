@@ -431,7 +431,7 @@ def ruleset(repo, checks):
     }
 
 
-def merge_preflight(repo, number, reviewed_sha):
+def merge_preflight(repo, number, reviewed_sha, review_directory=None):
     repo.assert_main()
     reviewed_sha = sha(reviewed_sha)
     pr = repo.pr(number)
@@ -441,12 +441,13 @@ def merge_preflight(repo, number, reviewed_sha):
         raise WorkflowError("PR base or head changed; review the current artifact")
     if pr.get("mergeable") is not True:
         raise WorkflowError("Mergeability is unknown or conflicting; wait or repair")
-    review_list = repo.api(f"pulls/{number}/reviews", paginate=True)
-    if not any(
-        r.get("commit_id") == reviewed_sha and r.get("state") in {"COMMENTED", "APPROVED"}
-        for r in review_list
-    ):
-        raise WorkflowError("No published review exists for this exact head")
+    if not review_directory:
+        raise WorkflowError("No published review coverage record supplied; use --review-directory")
+    import review
+
+    # A COMMENT review for this head is not enough: the saved packet must be coverage-qualified
+    # and its exact publication body must be the one published for this head.
+    review.verified_published(repo, review_directory, number, reviewed_sha, pr["base"]["sha"])
     # --required must fail closed if no required checks are configured.
     checks = json.loads(
         run(
@@ -468,8 +469,9 @@ def merge_preflight(repo, number, reviewed_sha):
         raise WorkflowError("Required check configuration is missing or does not match the observed names")
     if any(c["bucket"] != "pass" for c in checks):
         raise WorkflowError("Every required check must pass; skipped/neutral/pending is insufficient")
-    if repo.pr(number)["head"]["sha"] != reviewed_sha:
-        raise WorkflowError("Head changed during preflight")
+    observed = repo.pr(number)
+    if observed["head"]["sha"] != reviewed_sha or observed["base"]["sha"] != pr["base"]["sha"]:
+        raise WorkflowError("Head or base changed during preflight")
     return {
         "reviewed_sha": reviewed_sha,
         "human_checks": "Read every finding, resolve conversations, confirm domain evidence and approve the merge yourself.",
@@ -583,6 +585,7 @@ def main():
     merge = sub.add_parser("merge-preflight")
     merge.add_argument("pr")
     merge.add_argument("--reviewed-sha", required=True)
+    merge.add_argument("--review-directory", required=True)
     register = sub.add_parser(
         "register-reviewer", help="Verify and privately register a pinned reviewer binary"
     )
@@ -676,7 +679,7 @@ def main():
         elif args.command == "ruleset":
             result = ruleset(repo, args.check)
         elif args.command == "merge-preflight":
-            result = merge_preflight(repo, positive(args.pr), args.reviewed_sha)
+            result = merge_preflight(repo, positive(args.pr), args.reviewed_sha, args.review_directory)
         elif args.command == "register-reviewer":
             import review_cli
 

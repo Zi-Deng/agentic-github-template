@@ -17,7 +17,9 @@ sys.path.insert(0, str(SOURCE / "scripts/agentic"))
 import install  # noqa: E402
 import profiles  # noqa: E402
 import review  # noqa: E402
+import review_cli  # noqa: E402
 import review_policy  # noqa: E402
+import review_process  # noqa: E402
 import workflow  # noqa: E402
 
 
@@ -65,6 +67,7 @@ class GitFixture(unittest.TestCase):
         self.issue = {
             "state": "open",
             "title": "Correct value",
+            "body": "## Acceptance criteria\n1. Correct the value while preserving supported behavior.\n",
             "url": "https://api.github.com/repos/example/project/issues/12",
         }
         self.repo.api = self.api
@@ -256,10 +259,24 @@ class WorktreeTests(GitFixture):
         self.commit_task()
         with self.assertRaisesRegex(workflow.WorkflowError, "No published review"):
             workflow.merge_preflight(self.repo, 31, self.head)
+        # A COMMENT review alone is not a coverage record.
+        from review_fixtures import store
+
+        directory = review.prepare(self.repo, 31, 12, 1234)
+        store(self.repo, directory)
+        self.reviews = [{"commit_id": self.head, "state": "COMMENTED", "body": "looks fine"}]
+        with self.assertRaisesRegex(workflow.WorkflowError, "No unique published coverage-qualified"):
+            workflow.merge_preflight(self.repo, 31, self.head, directory)
 
     def test_merge_preflight_rejects_no_checks_or_skipped_checks(self):
         self.commit_task()
-        self.reviews = [{"commit_id": self.head, "state": "COMMENTED"}]
+        from review_fixtures import store
+
+        directory = review.prepare(self.repo, 31, 12, 1234)
+        store(self.repo, directory)
+        self.reviews = [
+            {"commit_id": self.head, "state": "COMMENTED", "body": review.publication_body(directory)}
+        ]
         original = workflow.run
         for checks in [[], [{"name": "quality", "bucket": "skipping", "state": "SKIPPED"}]]:
 
@@ -269,11 +286,17 @@ class WorktreeTests(GitFixture):
                 return original(args, **kwargs)
 
             with patch.object(workflow, "run", side_effect=fake), self.assertRaises(workflow.WorkflowError):
-                workflow.merge_preflight(self.repo, 31, self.head)
+                workflow.merge_preflight(self.repo, 31, self.head, directory)
 
     def test_merge_preflight_emits_pinned_command_only(self):
         self.commit_task()
-        self.reviews = [{"commit_id": self.head, "state": "COMMENTED"}]
+        from review_fixtures import store
+
+        directory = review.prepare(self.repo, 31, 12, 1234)
+        store(self.repo, directory)
+        self.reviews = [
+            {"commit_id": self.head, "state": "COMMENTED", "body": review.publication_body(directory)}
+        ]
         original = workflow.run
 
         def fake(args, **kwargs):
@@ -284,9 +307,20 @@ class WorktreeTests(GitFixture):
             return original(args, **kwargs)
 
         with patch.object(workflow, "run", side_effect=fake):
-            result = workflow.merge_preflight(self.repo, 31, self.head)
+            result = workflow.merge_preflight(self.repo, 31, self.head, directory)
         self.assertIn("--match-head-commit " + self.head, result["command"])
         self.assertFalse(self.pr_data["merged"])
+        # An INCOMPLETE record is refused even when its exact body was published.
+        from review_fixtures import store as store_review
+
+        incomplete = review.prepare(self.repo, 31, 12, 1234)
+        store_review(self.repo, incomplete, "Partial inspection.\n")
+        self.reviews.append(
+            {"commit_id": self.head, "state": "COMMENTED", "body": review.publication_body(incomplete)}
+        )
+        with patch.object(workflow, "run", side_effect=fake):
+            with self.assertRaisesRegex(workflow.WorkflowError, "coverage is incomplete"):
+                workflow.merge_preflight(self.repo, 31, self.head, incomplete)
 
 
 class ReviewTests(GitFixture):
@@ -352,13 +386,13 @@ class ReviewTests(GitFixture):
         git(self.task_path, "commit", "-m", "large text fixture")
         self.pr_data["head"]["sha"] = git(self.task_path, "rev-parse", "HEAD")
         git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
-        with self.assertRaisesRegex(workflow.WorkflowError, "max_diff_bytes"):
-            review.prepare(self.repo, 31, 12, 1234)
-        cfg = workflow.configuration(self.root)
-        cfg["max_diff_bytes"] = None
-        with patch.object(review, "configuration", return_value=cfg):
-            directory = review.prepare(self.repo, 31, 12, 1234)
+        directory = review.prepare(self.repo, 31, 12, 1234)
         self.assertGreater((directory / "packet/diff.txt").stat().st_size, 300_000)
+        cfg = workflow.configuration(self.root)
+        cfg["max_diff_bytes"] = 300_000
+        with patch.object(review, "configuration", return_value=cfg):
+            with self.assertRaisesRegex(workflow.WorkflowError, "max_diff_bytes"):
+                review.prepare(self.repo, 31, 12, 1234)
         index = json.loads((directory / "packet/source-index.json").read_text())
         self.assertIn("omitted", next(item for item in index if item["path"] == "large.txt"))
 
@@ -410,6 +444,159 @@ class ReviewTests(GitFixture):
         self.assertTrue(review.private_path("files/input/sample.txt", ["files/input"]))
         self.assertFalse(review.private_path("files/inputs/sample.txt", ["files/input"]))
 
+    def test_symlinks_are_never_dereferenced(self):
+        (self.root / "secret-link.py").symlink_to("/etc/passwd")
+        git(self.root, "add", "secret-link.py")
+        git(self.root, "commit", "-m", "link fixture")
+        index = review.snapshot(
+            self.repo,
+            git(self.root, "rev-parse", "HEAD"),
+            self.parent / "snapshot",
+            workflow.configuration(self.root),
+        )
+        self.assertIn("symlink", next(i for i in index if i["path"] == "secret-link.py")["omitted"])
+
+    def test_private_path_diff_is_rejected_before_packet_creation(self):
+        self.commit_task()
+        (self.task_path / "memory").mkdir()
+        (self.task_path / "memory/private.md").write_text("private")
+        git(self.task_path, "add", "-f", "memory/private.md")
+        git(self.task_path, "commit", "-m", "private fixture")
+        self.pr_data["head"]["sha"] = git(self.task_path, "rev-parse", "HEAD")
+        git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
+        with self.assertRaisesRegex(workflow.WorkflowError, "private/data"):
+            review.prepare(self.repo, 31, 12, 1234)
+
+    def test_review_rejects_stale_head(self):
+        directory = self.packet()
+        self.pr_data["head"]["sha"] = "a" * 40
+        with self.assertRaisesRegex(workflow.WorkflowError, "changed"):
+            review.review(self.repo, directory)
+
+    def test_publish_is_comment_bound_to_sha_and_idempotent(self):
+        from review_fixtures import store
+
+        directory = self.packet()
+        store(self.repo, directory)
+        review.publish(self.repo, directory)
+        body = self.posts[0][1]
+        self.assertEqual(body["event"], "COMMENT")
+        self.assertEqual(body["commit_id"], self.head)
+        self.assertIn("coverage-qualified static inspection", body["body"])
+        self.reviews.append(
+            {"body": body["body"], "html_url": "existing", "commit_id": self.head, "state": "COMMENTED"}
+        )
+        self.assertEqual(review.publish(self.repo, directory), {"existing_review": "existing"})
+        self.assertEqual(len(self.posts), 1)
+        self.assertTrue(review.verify_publication(self.repo, directory)["coverage_qualified"])
+
+    def test_copilot_run_has_fresh_state_and_read_only_tool_allowlist(self):
+        from review_fixtures import HELP, provider_response
+
+        packet_config = workflow.configuration(self.root)
+        with patch.object(review, "configuration", return_value=packet_config):
+            directory = self.packet()
+        requested_model = profiles.active_profile(self.repo, packet_config)["reviewer"]["model"]
+        original = review.run
+        observed = []
+
+        def fake(args, **kwargs):
+            if args[0] != "/fixture/copilot":
+                return original(args, **kwargs)
+            if args[1] == "--help":
+                return subprocess.CompletedProcess(args, 0, HELP, "")
+            if args[1] == "--version":
+                return subprocess.CompletedProcess(args, 0, "Copilot CLI 1.0.83\n", "")
+            observed.append((args, kwargs))
+            self.assertFalse(Path(kwargs["cwd"]).is_relative_to(self.root))
+            profile = (Path(kwargs["cwd"]) / ".github/agents/independent-reviewer.agent.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("tools: [view, grep, glob]", profile.splitlines())
+            self.assertNotIn("GH_TOKEN", kwargs["env"])
+            self.assertNotIn("COPILOT_PROVIDER_BASE_URL", kwargs["env"])
+            settings = json.loads((Path(kwargs["env"]["COPILOT_HOME"]) / "settings.json").read_text())
+            self.assertTrue(settings["disableAllHooks"])
+            return subprocess.CompletedProcess(
+                args, 0, provider_response(args, kwargs, directory / "packet"), ""
+            )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COPILOT_GITHUB_TOKEN": "fake-test-token",
+                    "COPILOT_PROVIDER_BASE_URL": "https://invalid.test",
+                },
+            ),
+            patch.object(review, "run", side_effect=fake),
+            patch.object(review_cli, "executable", return_value="/fixture/copilot"),
+            patch.object(review_process, "capture", side_effect=fake),
+            patch.object(
+                review,
+                "configuration",
+                side_effect=AssertionError("Run must use the model and budgets frozen in the review packet"),
+            ),
+        ):
+            report = review.review(self.repo, directory)
+        self.assertTrue(report.exists())
+        argv = observed[0][0]
+        self.assertIn("--available-tools=view,grep,glob", argv)
+        self.assertIn("--allow-tool=view,grep,glob", argv)
+        self.assertNotIn("--allow-all", argv)
+        self.assertNotIn("--continue", argv)
+        self.assertEqual(argv[argv.index("--model") + 1], requested_model)
+        self.assertEqual(
+            argv[argv.index("--max-ai-credits") + 1],
+            str(packet_config["review_max_ai_credits"]),
+        )
+        self.assertIn(f"Requested model: `{requested_model}`", review.publication_body(directory))
+        self.assertTrue(review.qualification(directory)["qualified"])
+        meta = review.verify_packet(directory)
+        self.assertEqual((meta["schema_version"], meta["kind"]), (review.PACKET_SCHEMA, "single"))
+        self.assertEqual(meta["profile"], "astra-copilot")
+
+    def test_gpt_reviewer_profile_reaches_the_command_and_auto_is_refused(self):
+        from review_fixtures import HELP, provider_response
+
+        with patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}):
+            directory = self.packet()
+        meta = review.verify_packet(directory)
+        self.assertEqual(meta["requested_model"], "gpt-6-astra")
+        self.assertEqual(meta["reviewer"]["family"], "openai")
+        self.assertEqual(meta["provenance"]["profile"], "fable-gpt")
+        original = review.run
+        observed = []
+
+        def fake(args, **kwargs):
+            if args[0] != "/fixture/copilot":
+                return original(args, **kwargs)
+            if args[1] == "--help":
+                return subprocess.CompletedProcess(args, 0, HELP, "")
+            if args[1] == "--version":
+                return subprocess.CompletedProcess(args, 0, "1.0.83", "")
+            observed.append(args)
+            return subprocess.CompletedProcess(
+                args, 0, provider_response(args, kwargs, directory / "packet"), ""
+            )
+
+        with (
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
+            patch.object(review, "run", side_effect=fake),
+            patch.object(review_cli, "executable", return_value="/fixture/copilot"),
+            patch.object(review_process, "capture", side_effect=fake),
+            patch.object(review, "configuration", side_effect=AssertionError("frozen packet only")),
+        ):
+            review.review(self.repo, directory)
+        argv = observed[0]
+        self.assertEqual(argv[argv.index("--model") + 1], "gpt-6-astra")
+        self.assertEqual(argv[argv.index("--max-ai-credits") + 1], "400")
+        self.assertIn("Requested model: `gpt-6-astra`", review.publication_body(directory))
+        meta["requested_model"] = "auto"
+        workflow.write_json(directory / "metadata.json", meta)
+        with self.assertRaisesRegex(workflow.WorkflowError, "immutable review policy"):
+            review.verify_packet(directory)
+
     def test_prepare_records_overrides_and_refuses_uninstalled_reviewer_backends(self):
         self.commit_task()
         with self.assertRaisesRegex(workflow.WorkflowError, "implementer family"):
@@ -442,208 +629,6 @@ class ReviewTests(GitFixture):
         self.assertEqual(meta["selection_sources"]["provider"], "per-call")
         self.assertEqual(meta["review_policy"]["budget"]["ai_credits"], 400)
         self.assertFalse(list((self.root / ".agentic-local/reviews").glob("*/review.md")))
-
-    def test_non_default_effort_is_passed_to_copilot_and_checked_in_help(self):
-        self.commit_task()
-        directory = review.prepare(self.repo, 31, 12, 1234, review_effort="high")
-        meta = review.verify_packet(directory)
-        self.assertEqual((meta["reviewer"]["effort"], meta["review_policy"]["effort"]), ("high", "high"))
-        original = review.run
-        observed = []
-
-        def fake(args, **kwargs):
-            if args[0] != "copilot":
-                return original(args, **kwargs)
-            if args[1] == "--help":
-                return subprocess.CompletedProcess(
-                    args,
-                    0,
-                    "--available-tools --no-custom-instructions --disable-builtin-mcps --no-remote-export --no-ask-user --usage-output-file --max-ai-credits",
-                    "",
-                )
-            if args[1] == "--version":
-                return subprocess.CompletedProcess(args, 0, "Copilot test double\n", "")
-            observed.append(args)
-            return subprocess.CompletedProcess(
-                args, 0, "No material findings supported by this review.\n", ""
-            )
-
-        with (
-            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
-            patch.object(review, "run", side_effect=fake),
-        ):
-            with self.assertRaisesRegex(workflow.WorkflowError, "--effort"):
-                review.review(self.repo, directory)
-        self.assertEqual(observed, [])
-
-        def capable(args, **kwargs):
-            if args[0] == "copilot" and args[1] == "--help":
-                return subprocess.CompletedProcess(args, 0, fake(args, **kwargs).stdout + " --effort", "")
-            return fake(args, **kwargs)
-
-        with (
-            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
-            patch.object(review, "run", side_effect=capable),
-        ):
-            review.review(self.repo, directory)
-        argv = observed[0]
-        self.assertEqual(argv[argv.index("--effort") + 1], "high")
-        meta = review.verify_packet(directory)
-        meta["reviewer"]["effort"] = "low"
-        workflow.write_json(directory / "metadata.json", meta)
-        (directory / "review.md").unlink()
-        with (
-            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
-            patch.object(review, "run", side_effect=capable),
-        ):
-            with self.assertRaisesRegex(workflow.WorkflowError, "immutable review policy"):
-                review.review(self.repo, directory)
-
-    def test_symlinks_are_never_dereferenced(self):
-        (self.root / "secret-link.py").symlink_to("/etc/passwd")
-        git(self.root, "add", "secret-link.py")
-        git(self.root, "commit", "-m", "link fixture")
-        index = review.snapshot(
-            self.repo,
-            git(self.root, "rev-parse", "HEAD"),
-            self.parent / "snapshot",
-            workflow.configuration(self.root),
-        )
-        self.assertIn("symlink", next(i for i in index if i["path"] == "secret-link.py")["omitted"])
-
-    def test_private_path_diff_is_rejected_before_packet_creation(self):
-        self.commit_task()
-        (self.task_path / "memory").mkdir()
-        (self.task_path / "memory/private.md").write_text("private")
-        git(self.task_path, "add", "-f", "memory/private.md")
-        git(self.task_path, "commit", "-m", "private fixture")
-        self.pr_data["head"]["sha"] = git(self.task_path, "rev-parse", "HEAD")
-        git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
-        with self.assertRaisesRegex(workflow.WorkflowError, "private/data"):
-            review.prepare(self.repo, 31, 12, 1234)
-
-    def test_review_rejects_stale_head(self):
-        directory = self.packet()
-        self.pr_data["head"]["sha"] = "a" * 40
-        with self.assertRaisesRegex(workflow.WorkflowError, "changed"):
-            review.review(self.repo, directory)
-
-    def test_publish_is_comment_bound_to_sha_and_idempotent(self):
-        directory = self.packet()
-        (directory / "review.md").write_text("No material findings supported.\n")
-        meta = review.verify_packet(directory)
-        meta["review_sha256"] = review.digest(directory / "review.md")
-        workflow.write_json(directory / "metadata.json", meta)
-        review.publish(self.repo, directory)
-        body = self.posts[0][1]
-        self.assertEqual(body["event"], "COMMENT")
-        self.assertEqual(body["commit_id"], self.head)
-        self.reviews.append({"body": body["body"], "html_url": "existing"})
-        self.assertEqual(review.publish(self.repo, directory), {"existing_review": "existing"})
-        self.assertEqual(len(self.posts), 1)
-
-    def test_copilot_run_has_fresh_state_and_read_only_tool_allowlist(self):
-        packet_config = workflow.configuration(self.root)
-        with patch.object(review, "configuration", return_value=packet_config):
-            directory = self.packet()
-        requested_model = profiles.active_profile(self.repo, packet_config)["reviewer"]["model"]
-        original = review.run
-        observed = []
-
-        def fake(args, **kwargs):
-            if args[0] != "copilot":
-                return original(args, **kwargs)
-            if args[1] == "--help":
-                return subprocess.CompletedProcess(
-                    args,
-                    0,
-                    "--available-tools --no-custom-instructions --disable-builtin-mcps --no-remote-export --no-ask-user --usage-output-file --max-ai-credits",
-                    "",
-                )
-            if args[1] == "--version":
-                return subprocess.CompletedProcess(args, 0, "Copilot test double\n", "")
-            observed.append((args, kwargs))
-            self.assertFalse(Path(kwargs["cwd"]).is_relative_to(self.root))
-            self.assertNotIn("GH_TOKEN", kwargs["env"])
-            self.assertNotIn("COPILOT_PROVIDER_BASE_URL", kwargs["env"])
-            settings = json.loads((Path(kwargs["env"]["COPILOT_HOME"]) / "settings.json").read_text())
-            self.assertTrue(settings["disableAllHooks"])
-            return subprocess.CompletedProcess(
-                args, 0, "No material findings supported by this review.\n", ""
-            )
-
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    "COPILOT_GITHUB_TOKEN": "fake-test-token",
-                    "COPILOT_PROVIDER_BASE_URL": "https://invalid.test",
-                },
-            ),
-            patch.object(review, "run", side_effect=fake),
-            patch.object(
-                review,
-                "configuration",
-                side_effect=AssertionError("Run must use the model and budgets frozen in the review packet"),
-            ),
-        ):
-            report = review.review(self.repo, directory)
-        self.assertTrue(report.exists())
-        argv = observed[0][0]
-        self.assertIn("--available-tools=view,grep,glob", argv)
-        self.assertNotIn("--allow-all", argv)
-        self.assertNotIn("--continue", argv)
-        self.assertEqual(argv[argv.index("--model") + 1], requested_model)
-        self.assertEqual(
-            argv[argv.index("--max-ai-credits") + 1],
-            str(packet_config["review_max_ai_credits"]),
-        )
-        self.assertIn(f"Requested model: `{requested_model}`", report.read_text())
-
-    def test_gpt_reviewer_packet_runs_and_auto_is_refused(self):
-        with patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}):
-            directory = self.packet()
-        meta = review.verify_packet(directory)
-        self.assertEqual(meta["requested_model"], "gpt-6-astra")
-        self.assertEqual(meta["reviewer"]["family"], "openai")
-        self.assertEqual(meta["provenance"]["profile"], "fable-gpt")
-        original = review.run
-        observed = []
-
-        def fake(args, **kwargs):
-            if args[0] != "copilot":
-                return original(args, **kwargs)
-            if args[1] == "--help":
-                return subprocess.CompletedProcess(
-                    args,
-                    0,
-                    "--available-tools --no-custom-instructions --disable-builtin-mcps --no-remote-export --no-ask-user --usage-output-file --max-ai-credits",
-                    "",
-                )
-            if args[1] == "--version":
-                return subprocess.CompletedProcess(args, 0, "Copilot test double\n", "")
-            observed.append(args)
-            return subprocess.CompletedProcess(
-                args, 0, "No material findings supported by this review.\n", ""
-            )
-
-        with (
-            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
-            patch.object(review, "run", side_effect=fake),
-            patch.object(review, "configuration", side_effect=AssertionError("frozen packet only")),
-        ):
-            report = review.review(self.repo, directory)
-        argv = observed[0]
-        self.assertEqual(argv[argv.index("--model") + 1], "gpt-6-astra")
-        self.assertEqual(argv[argv.index("--max-ai-credits") + 1], "400")
-        text = report.read_text()
-        self.assertIn("Requested model: `gpt-6-astra`", text)
-        self.assertIn("Reviewer family: openai", text)
-        meta["requested_model"] = "auto"
-        workflow.write_json(directory / "metadata.json", meta)
-        report.unlink()
-        with self.assertRaisesRegex(workflow.WorkflowError, "not auto"):
-            review.review(self.repo, directory)
 
 
 class LaunchTests(GitFixture):

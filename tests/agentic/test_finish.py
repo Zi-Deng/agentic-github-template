@@ -38,6 +38,12 @@ class FinishTests(PipelineFixture):
         self.assessment_file = self.parent / "assessment.json"
         self.assess()
 
+    def test_finish_refuses_missing_coverage_diagnostics(self):
+        state = tasks.TaskStore(self.repo).read("issue-12")
+        (Path(state["designated_review"]["directory"]) / "diagnostics.json").unlink()
+        with self.assertRaises(workflow.WorkflowError):
+            finish.prepare_finish(self.repo, 12, self.assessment_file)
+
     def record_completed_executor(self, role="implement"):
         # Model-double state in this disposable fixture only; no live executor ran.
         store = tasks.TaskStore(self.repo)

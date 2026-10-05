@@ -208,7 +208,8 @@ the reviewed SHA from the **review record**, not a new query assumed to be revie
 ```bash
 gh pr ready 456
 python3 scripts/agentic/workflow.py merge-preflight 456 \
-  --reviewed-sha FULL_SHA_RECORDED_IN_THE_REVIEW
+  --reviewed-sha FULL_SHA_RECORDED_IN_THE_REVIEW \
+  --review-directory /absolute/review-directory-of-the-qualified-report
 ```
 
 Preflight checks current PR state, target branch, exact head, recorded review and
