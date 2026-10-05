@@ -180,8 +180,8 @@ def prepare(
     if policy["provider"] not in INSTALLED_REVIEWERS:
         raise WorkflowError(
             f"The {policy['provider']} reviewer adapter is not installed in this harness "
-            f"(profile {selection['profile']!r}); select a profile with a copilot reviewer or pass "
-            "--review-provider copilot"
+            f"(profile {selection['profile']!r}; blocker claude_reviewer_adapter_not_installed); "
+            "select a profile with a copilot reviewer or pass --review-provider copilot"
         )
     pr = repo.pr(number)
     head, base = sha(pr["head"]["sha"]), sha(pr["base"]["sha"])

@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import os
 import stat
 import subprocess
 import tarfile
@@ -120,6 +121,36 @@ class ReviewerInstallationTests(unittest.TestCase):
                     install_tool.install(provider, folder)
                 download.assert_not_called()
             self.assertEqual(existing.read_bytes(), b"user installation")
+
+    def test_install_stages_artifacts_privately_under_a_permissive_umask(self):
+        binary = self.root / "member"
+        binary.write_bytes(b"fixture copilot")
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+            member = tarfile.TarInfo("copilot")
+            member.size = len(binary.read_bytes())
+            bundle.addfile(member, io.BytesIO(binary.read_bytes()))
+        data = buffer.getvalue()
+        digest = hashlib.sha256(data).hexdigest()
+        folder = self.root / "install"
+        previous = os.umask(0o002)
+        try:
+            with (
+                patch.object(review_cli, "supported_platform"),
+                patch.object(install_tool, "download", return_value=data),
+                patch.object(install_tool, "CLI_ARCHIVE_SHA256", digest),
+                patch.dict(
+                    review_cli.PROVIDERS["copilot"],
+                    cli={**review_cli.PROVIDERS["copilot"]["cli"], "archive_sha256": digest},
+                ),
+            ):
+                result = install_tool.install("copilot", folder)
+        finally:
+            os.umask(previous)
+        self.assertEqual(result, str(folder / "copilot"))
+        self.assertEqual(stat.S_IMODE((folder / "copilot").stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE((folder / "copilot.tar.gz").stat().st_mode), 0o644)
+        self.assertEqual((folder / "copilot").read_bytes(), b"fixture copilot")
 
     def test_hosted_route_remains_explicit_copilot_and_disabled_by_default(self):
         text = (SOURCE / ".github/workflows/copilot-review.yml").read_text()

@@ -150,6 +150,16 @@ class TransportTests(unittest.TestCase):
         with patch.object(ci_evidence, "artifact_receipt") as fetch:
             self.assertEqual(ci_evidence.collect(repo, head, checks)[0]["state"], "stale_run_association")
         fetch.assert_not_called()
+        # A receipt attached to the run but bound to another run, check or repository is
+        # reported as a binding mismatch, distinct from an unavailable receipt.
+        repo.api.side_effect = [execution, artifacts]
+        with patch.object(ci_evidence, "artifact_receipt", return_value=({**receipt, "run_id": 6}, "c" * 64)):
+            self.assertEqual(ci_evidence.collect(repo, head, checks)[0]["state"], "receipt_binding_mismatch")
+        repo.api.side_effect = [execution, artifacts]
+        with patch.object(ci_evidence, "artifact_receipt", side_effect=workflow.WorkflowError("withheld")):
+            self.assertEqual(
+                ci_evidence.collect(repo, head, checks)[0]["state"], "unavailable_or_invalid_receipt"
+            )
         # Only trusted configuration names count as checks; others are never fetched.
         repo.api.reset_mock()
         self.assertEqual(ci_evidence.collect(repo, head, checks, required=["other"]), [])

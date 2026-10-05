@@ -57,6 +57,7 @@ REVIEWER_KEYS = {
     },
 }
 SUPPORTED_SCHEMAS = (1, 2, 3)
+_NOTED_MIGRATIONS = set()
 
 
 def warn(message):
@@ -393,11 +394,14 @@ def active_profile(repo, cfg=None, *, warn_same_family=True):
     cfg = configuration(repo.root) if cfg is None else cfg
     declared = load_profiles(cfg)
     if declared["shimmed"]:
-        note(
-            "configuration schema "
-            f"{declared['config_schema']} was shimmed into profiles; the schema 3 equivalent is "
-            + json.dumps(migration_hint(declared), separators=(",", ":"))
-        )
+        hint = json.dumps(migration_hint(declared), separators=(",", ":"), sort_keys=True)
+        # One note per shimmed configuration per process; helpers resolve the profile repeatedly.
+        if (declared["config_schema"], hint) not in _NOTED_MIGRATIONS:
+            _NOTED_MIGRATIONS.add((declared["config_schema"], hint))
+            note(
+                "configuration schema "
+                f"{declared['config_schema']} was shimmed into profiles; the schema 3 equivalent is " + hint
+            )
     stale = plain_path(private_root(repo) / "review-selection.json")
     if stale.exists():
         warn(
@@ -431,12 +435,13 @@ def active_profile(repo, cfg=None, *, warn_same_family=True):
     return profile
 
 
-def login_root(cfg, reviewer):
-    if reviewer["backend"] != "claude-code":
+def login_root(cfg, reviewer, provider):
+    """The native login store for the selected provider: profile value, then configuration."""
+    if provider != "claude-code":
         return None
-    return reviewer.get("login_root") or absolute_path(
-        cfg.get("claude_review_login_root"), "claude_review_login_root"
-    )
+    if reviewer["backend"] == "claude-code" and reviewer.get("login_root"):
+        return reviewer["login_root"]
+    return absolute_path(cfg.get("claude_review_login_root"), "claude_review_login_root")
 
 
 def effective_budget_config(cfg, reviewer, provider):
@@ -538,7 +543,7 @@ def review_selection(
             "same_family": same_family,
             "same_family_acknowledged": acknowledged if same_family else None,
         },
-        "login_root": login_root(cfg, reviewer) if selected["provider"] == "claude-code" else None,
+        "login_root": login_root(cfg, reviewer, selected["provider"]),
         "reviewer_family": reviewer_family,
     }
 

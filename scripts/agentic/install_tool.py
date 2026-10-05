@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import io
+import os
 import shutil
 import tarfile
 import tempfile
@@ -27,6 +28,20 @@ def download(url, limit):
     return data
 
 
+def stage(path, data, *, executable=False):
+    """Write a staged artifact with private permissions regardless of the caller's umask."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.fchmod(fd, 0o700 if executable else 0o600)
+    except BaseException:
+        os.close(fd)
+        raise
+    with os.fdopen(fd, "wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def install(tool, directory):
     review_cli.supported_platform()
     destination = plain_path(Path(directory).expanduser())
@@ -44,13 +59,13 @@ def install(tool, directory):
             data = download(CLI_ARCHIVE_URL, review_cli.MAX_BINARY)
             if hashlib.sha256(data).hexdigest() != CLI_ARCHIVE_SHA256:
                 raise WorkflowError("Copilot release checksum mismatch")
-            (staged / "copilot.tar.gz").write_bytes(data)
+            stage(staged / "copilot.tar.gz", data)
             with tarfile.open(fileobj=io.BytesIO(data)) as archive:
                 members = [m for m in archive.getmembers() if m.name in {"copilot", "./copilot"}]
                 if len(members) != 1 or not members[0].isfile() or members[0].size > review_cli.MAX_BINARY:
                     raise WorkflowError("Unsupported Copilot archive contents")
                 with archive.extractfile(members[0]) as stream:
-                    (staged / "copilot").write_bytes(stream.read())
+                    stage(staged / "copilot", stream.read(), executable=True)
             review_cli.verify_copilot(staged / "copilot", staged / "copilot.tar.gz")
         else:
             spec = PROVIDERS["claude-code"]["cli"]
@@ -61,7 +76,7 @@ def install(tool, directory):
                 ("signing-key.asc", "https://downloads.claude.ai/keys/claude-code.asc", 100_000),
                 ("claude", base + "/linux-x64/claude", review_cli.MAX_BINARY),
             ]:
-                (staged / name).write_bytes(download(url, limit))
+                stage(staged / name, download(url, limit), executable=name == "claude")
             review_cli.verify_claude(
                 staged / "claude",
                 staged / "manifest.json",

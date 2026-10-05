@@ -116,18 +116,26 @@ def validate_workflows(root, required):
         assert value["permissions"]["contents"] == "read", path
         for name, job in value["jobs"].items():
             assert "timeout-minutes" in job, path
+            steps = job.get("steps", [])
+            receipts = [step for step in steps if "ci_evidence.py" in step.get("run", "")]
+            uploads = [
+                step
+                for step in steps
+                if step.get("uses", "").startswith("actions/upload-artifact@")
+                and f"validation-{name}-" in str(step.get("with", {}).get("name", ""))
+            ]
+            for step in receipts:
+                assert f"--check {name} " in step["run"] and step.get("if") == "always()", (path, name)
+            if receipts:
+                assert len(receipts) == 1 and len(uploads) == 1, (path, name)
+                assert uploads[0].get("if") == "always()", (path, name)
             if name in required:
                 observed_jobs.append(name)
                 assert "pull_request" in value["on"] and "push" in value["on"], path
                 assert value["on"]["push"] == {"branches": ["main"]}, path
                 assert "if" not in job and "continue-on-error" not in job, path
                 assert job.get("name", name) == name, path
-                receipts = [
-                    step
-                    for step in job.get("steps", [])
-                    if "ci_evidence.py" in step.get("run", "") and f"--check {name} " in step["run"]
-                ]
-                assert len(receipts) == 1 and receipts[0].get("if") == "always()", (path, name)
+                assert receipts, (path, name)
             for step in job.get("steps", []):
                 if "uses" in step:
                     assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", step["uses"]), step["uses"]

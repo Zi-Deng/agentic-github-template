@@ -94,7 +94,11 @@ def collect(repo, head, checks, base=None, required=None):
                 if not isinstance(receipt, dict) or any(
                     receipt.get(key) != value for key, value in expected.items()
                 ):
-                    raise WorkflowError("Receipt binding differs")
+                    # A receipt that does not bind to its own run is evidence of manipulation,
+                    # not absence; keep it distinct from unavailable receipts.
+                    row["state"] = "receipt_binding_mismatch"
+                    receipts.append(row)
+                    continue
                 sha(receipt.get("tested_checkout_sha", ""))
                 if base is not None and receipt.get("pr_base_sha") != base:
                     row["state"] = "stale_base_association"

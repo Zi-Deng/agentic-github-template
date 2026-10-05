@@ -146,6 +146,12 @@ class ProfileTests(GitFixture):
         self.assertEqual(active["name"], "legacy-claude-code")
         self.assertIn("note: configuration schema 2 was shimmed", stderr.getvalue())
         self.assertIn('"schema_version":3', stderr.getvalue())
+        # Helpers resolve the profile several times; the note is still printed once per process.
+        profiles._NOTED_MIGRATIONS.clear()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            profiles.show(self.repo)
+        self.assertEqual(stderr.getvalue().count("note: configuration schema 2 was shimmed"), 1)
 
     def test_schema_three_rules_and_unsupported_schemas(self):
         with self.assertRaisesRegex(workflow.WorkflowError, "remove openai_model"):
@@ -331,6 +337,12 @@ class ProfileTests(GitFixture):
         cfg["profiles"]["astra-claude"]["reviewer"]["login_root"] = "/srv/profile-login"
         with patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}):
             self.assertEqual(profiles.review_selection(self.repo, cfg)["login_root"], "/srv/profile-login")
+        # A per-call switch to claude-code from a Copilot profile keeps the configured login root.
+        switched = profiles.review_selection(self.repo, cfg, review_provider="claude-code")
+        self.assertEqual(
+            (switched["policy"]["provider"], switched["login_root"]), ("claude-code", "/srv/claude-login")
+        )
+        self.assertIsNone(profiles.review_selection(self.repo, cfg)["login_root"])
 
     def test_profile_budgets_apply_only_to_their_own_backend(self):
         cfg = workflow.configuration(self.root)

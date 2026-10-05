@@ -430,7 +430,7 @@ class ReviewTests(GitFixture):
         self.assertTrue(meta["provenance"]["same_family_acknowledged"])
         self.assertEqual(meta["provenance"]["profile"], "astra-copilot")
         with patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}):
-            with self.assertRaisesRegex(workflow.WorkflowError, "adapter is not installed"):
+            with self.assertRaisesRegex(workflow.WorkflowError, "claude_reviewer_adapter_not_installed"):
                 review.prepare(self.repo, 31, 12, 1234)
             with self.assertRaisesRegex(workflow.WorkflowError, "requires a reviewer backend of copilot"):
                 review.prepare(self.repo, 31, 12, 1234, require_backend="copilot")
