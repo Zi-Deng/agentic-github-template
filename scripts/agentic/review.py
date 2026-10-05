@@ -16,7 +16,8 @@ import tempfile
 import uuid
 from pathlib import Path, PurePosixPath
 
-from profiles import active_profile, family, validate_model
+import review_policy
+from profiles import family, review_selection
 from workflow import Repo, WorkflowError, configuration, positive, run, sha, write_json
 
 TEXT_SUFFIXES = {
@@ -57,10 +58,12 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def private_path(name):
+def private_path(name, private_paths=()):
+    """Component names are fixed; repository-relative prefixes come from configuration."""
     path = PurePosixPath(name)
     return (
         bool(PRIVATE_PARTS.intersection(path.parts))
+        or any(path.is_relative_to(prefix) for prefix in private_paths)
         or path.name.startswith(".env")
         or path.suffix in {".pem", ".key"}
     )
@@ -88,7 +91,7 @@ def snapshot(repo, commit, output, limits):
     for index, item in enumerate(tree(repo, commit)):
         name = item["path"]
         reason = None
-        if private_path(name):
+        if private_path(name, limits.get("private_paths", ())):
             reason = "private/data path excluded"
         elif item["kind"] != "blob" or item["mode"] not in {"100644", "100755"}:
             reason = "symlink/submodule/nonregular entry excluded"
@@ -139,27 +142,47 @@ def reviewer_budget(meta, key, fallback):
     return value if value else meta["config"][fallback]
 
 
+INSTALLED_REVIEWERS = ("copilot",)
+
+
 def prepare(
-    repo, number, issue_number, plan_comment, expected_head=None, output=None, reviewer=None, provenance=None
+    repo,
+    number,
+    issue_number,
+    plan_comment,
+    expected_head=None,
+    output=None,
+    selection=None,
+    *,
+    review_provider=None,
+    review_model=None,
+    review_effort=None,
+    allow_same_family=False,
+    require_backend=None,
 ):
     number, issue_number, plan_comment = map(positive, (number, issue_number, plan_comment))
     cfg = configuration(repo.root)
-    if reviewer is None:
-        # The CLI and Actions paths resolve the active profile from the trusted checkout.
-        profile = active_profile(repo, cfg)
-        reviewer = profile["reviewer"]
-        declared = profile["implementer"]
-        provenance = {
-            "profile": profile["name"],
-            "implementer": {
-                "backend": declared["backend"],
-                "model": declared["model"],
-                "family": declared["family"],
-            },
-            "implementer_source": "active profile (no task record on the standalone path)",
-            "same_family": profile["same_family"],
-        }
-    validate_model("copilot", reviewer["model"])
+    if selection is None:
+        # The CLI and Actions paths resolve the active profile from the trusted checkout;
+        # explicit per-call overrides are recorded in the packet and never persisted.
+        selection = review_selection(
+            repo,
+            cfg,
+            review_provider=review_provider,
+            review_model=review_model,
+            review_effort=review_effort,
+            allow_same_family=allow_same_family,
+            require_backend=require_backend,
+        )
+    elif require_backend is not None and selection["policy"]["provider"] != require_backend:
+        raise WorkflowError(f"This path requires a reviewer backend of {require_backend}")
+    policy = review_policy.validate_policy(selection["policy"])
+    if policy["provider"] not in INSTALLED_REVIEWERS:
+        raise WorkflowError(
+            f"The {policy['provider']} reviewer adapter is not installed in this harness "
+            f"(profile {selection['profile']!r}; blocker claude_reviewer_adapter_not_installed); "
+            "select a profile with a copilot reviewer or pass --review-provider copilot"
+        )
     pr = repo.pr(number)
     head, base = sha(pr["head"]["sha"]), sha(pr["base"]["sha"])
     if expected_head and head != sha(expected_head):
@@ -188,13 +211,16 @@ def prepare(
         .stdout.rstrip("\0")
         .split("\0")
     )
-    if any(private_path(name) for name in names):
+    if any(private_path(name, cfg["private_paths"]) for name in names):
         raise WorkflowError("Diff touches excluded private/data paths; do not transmit it to the reviewer")
     diff = run(
         ["git", "-C", repo.root, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", ancestor, head]
     ).stdout
-    if not diff.strip() or len(diff.encode()) > cfg["max_diff_bytes"]:
-        raise WorkflowError("Diff is empty or exceeds the review budget; split the PR")
+    if not diff.strip():
+        raise WorkflowError("Diff is empty; there is no committed change to review")
+    diff_limit = cfg["max_diff_bytes"]
+    if diff_limit is not None and len(diff.encode("utf-8")) > diff_limit:
+        raise WorkflowError("Diff exceeds max_diff_bytes; split the PR or explicitly adjust the cap")
     directory = (
         Path(output).resolve()
         if output
@@ -245,15 +271,20 @@ def prepare(
         "merge_base_sha": ancestor,
         "created_at": dt.datetime.now(dt.UTC).isoformat(),
         "files": files,
-        "requested_model": reviewer["model"],
+        "requested_model": policy["model"],
         "reviewer": {
-            "backend": "copilot",
-            "model": reviewer["model"],
-            "family": family(reviewer["model"]),
-            "max_ai_credits": reviewer.get("max_ai_credits") or cfg["review_max_ai_credits"],
-            "timeout_seconds": reviewer.get("timeout_seconds") or cfg["review_timeout_seconds"],
+            "backend": policy["provider"],
+            "model": policy["model"],
+            "effort": policy["effort"],
+            "family": family(policy["model"]),
+            "max_ai_credits": policy["budget"]["ai_credits"],
+            "timeout_seconds": policy["budget"]["timeout_seconds"],
         },
-        "provenance": provenance or {},
+        # The immutable policy binds provider, exact model, effort, CLI pin and budget for this round.
+        "review_policy": policy,
+        "selection_sources": selection["sources"],
+        "overrides": selection["overrides"],
+        "provenance": selection["provenance"],
         "config": cfg,
     }
     write_json(directory / "metadata.json", metadata)
@@ -280,6 +311,11 @@ def review(repo, directory):
     model = meta["requested_model"]
     if not re.fullmatch(r"(?:claude|gpt)-[a-z0-9.-]+", model):
         raise WorkflowError("Choose an explicit Claude or GPT model ID through Copilot, not auto")
+    effort = (meta.get("reviewer") or {}).get("effort", "default")
+    if "review_policy" in meta:
+        policy = review_policy.validate_policy(meta["review_policy"])
+        if policy["provider"] != "copilot" or policy["model"] != model or policy["effort"] != effort:
+            raise WorkflowError("Packet reviewer fields differ from its immutable review policy")
     if (directory / "review.md").exists():
         raise WorkflowError("A review already exists here; prepare a fresh review for another round")
     help_text = run(["copilot", "--help"]).stdout
@@ -291,6 +327,7 @@ def review(repo, directory):
         "--no-ask-user",
         "--usage-output-file",
         "--max-ai-credits",
+        *(["--effort"] if effort != "default" else []),
     ]:
         if flag not in help_text:
             raise WorkflowError(f"Installed Copilot CLI lacks required capability: {flag}")
@@ -365,6 +402,7 @@ def review(repo, directory):
             "--silent",
             "--stream",
             "off",
+            *(["--effort", effort] if effort != "default" else []),
             "--max-ai-credits",
             str(reviewer_budget(meta, "max_ai_credits", "review_max_ai_credits")),
             "--usage-output-file",
@@ -438,6 +476,9 @@ def main():
     prep.add_argument("--plan-comment", required=True)
     prep.add_argument("--expected-head")
     prep.add_argument("--output")
+    review_policy.add_arguments(prep)
+    prep.add_argument("--allow-same-family", action="store_true")
+    prep.add_argument("--require-reviewer-backend", choices=["copilot", "claude-code"])
     for name in ["run", "publish"]:
         p = sub.add_parser(name)
         p.add_argument("directory")
@@ -446,7 +487,19 @@ def main():
         repo = Repo()
         repo.assert_main()
         if args.command == "prepare":
-            result = prepare(repo, args.pr, args.issue, args.plan_comment, args.expected_head, args.output)
+            result = prepare(
+                repo,
+                args.pr,
+                args.issue,
+                args.plan_comment,
+                args.expected_head,
+                args.output,
+                review_provider=args.review_provider,
+                review_model=args.review_model,
+                review_effort=args.review_effort,
+                allow_same_family=args.allow_same_family,
+                require_backend=args.require_reviewer_backend,
+            )
         elif args.command == "run":
             result = review(repo, args.directory)
         else:

@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -167,6 +168,40 @@ class SessionTests(GitFixture):
         self.assertEqual(args[args.index("--sandbox") + 1], "workspace-write")
         self.assertEqual(args[args.index("--add-dir") + 1], str(self.repo.common))
         self.assertEqual(args[args.index("--ask-for-approval") + 1], "never")
+
+    def test_session_state_is_private_under_permissive_umask(self):
+        previous = os.umask(0)
+        try:
+            result = self.invoke()
+        finally:
+            os.umask(previous)
+        self.assertEqual(result["status"], "completed")
+        directory = Path(result["directory"])
+        state = self.root / ".agentic-local"
+        for path in (state, state / "sessions", directory.parent, directory):
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE((directory / "prompt.txt").stat().st_mode), 0o600)
+
+    def test_review_cap_does_not_limit_executor_prompt(self):
+        state = tasks.TaskStore(self.repo).read("issue-12")
+        implementer = profiles.active_profile(self.repo)["implementer"]
+        config = workflow.configuration(self.root)
+        config["max_diff_bytes"] = 1
+        with patch.object(sessions, "configuration", return_value=config):
+            prompt = sessions.executor_prompt(self.repo, state, "implement", self.task_path, implementer)
+        self.assertGreater(len(prompt.encode("utf-8")), 1)
+
+    def test_unlimited_diff_does_not_disable_executor_prompt_budget(self):
+        state = tasks.TaskStore(self.repo).read("issue-12")
+        implementer = profiles.active_profile(self.repo)["implementer"]
+        config = workflow.configuration(self.root)
+        config["max_diff_bytes"] = None
+        config["managed_max_prompt_bytes"] = 1
+        with (
+            patch.object(sessions, "configuration", return_value=config),
+            self.assertRaisesRegex(workflow.WorkflowError, "Executor input exceeds"),
+        ):
+            sessions.executor_prompt(self.repo, state, "implement", self.task_path, implementer)
 
     def test_resume_uses_original_uuid_even_with_a_newer_record(self):
         self.invoke()
@@ -364,7 +399,7 @@ class LegacyPinTests(SessionTests):
 
     def test_legacy_pin_adopts_the_configured_codex_model_not_a_template_constant(self):
         cfg = workflow.configuration(self.root)
-        cfg["profiles"]["astra-claude"]["implementer"]["model"] = "gpt-6-sol"
+        cfg["profiles"]["astra-copilot"]["implementer"]["model"] = "gpt-6-sol"
         workflow.write_json(self.root / ".agentic/config.json", cfg)
         git(self.root, "add", ".agentic/config.json")
         git(self.root, "commit", "-m", "adopter model")
@@ -647,14 +682,14 @@ class ClaudeSessionTests(GitFixture):
         self.assertIn("--permission-mode dontAsk", preview["command"])
 
     def test_bypass_is_refused_for_the_codex_backend(self):
-        os.environ[profiles.ENV_NAME] = "astra-claude"
+        os.environ[profiles.ENV_NAME] = "astra-copilot"
         with self.assertRaisesRegex(workflow.WorkflowError, "Claude backend only"):
             self.invoke(containment="bypass", containment_reason="misapplied")
         self.assertEqual(self.model_calls, [])
 
     def test_pinned_backend_mismatch_is_refused_before_any_process(self):
         self.invoke()
-        os.environ[profiles.ENV_NAME] = "astra-claude"
+        os.environ[profiles.ENV_NAME] = "astra-copilot"
         with self.assertRaisesRegex(workflow.WorkflowError, "bound to backend claude"):
             self.invoke()
         with patch.object(sessions, "check_cli"), patch.object(sessions, "Popen") as process:
@@ -700,6 +735,6 @@ class ClaudeSessionTests(GitFixture):
         self.assertEqual(result["executor_uuid"], IDENTITY)
         args = self.model_calls[-1][0]
         self.assertEqual(args[args.index("--resume") + 1], IDENTITY)
-        os.environ[profiles.ENV_NAME] = "astra-claude"
+        os.environ[profiles.ENV_NAME] = "astra-copilot"
         with self.assertRaisesRegex(workflow.WorkflowError, "pinned backend"):
             sessions.recover_executor(self.repo, 12, IDENTITY, record, "Saved record", True, backend="codex")
