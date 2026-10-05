@@ -23,7 +23,7 @@ on:
         default: false
         type: boolean
       profile:
-        description: Profile name from .agentic/config.json (empty = default_profile)
+        description: Profile name from .agentic/config.json (empty = hosted_profile); its reviewer backend must be copilot
         required: false
         default: ''
         type: string
@@ -50,8 +50,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - name: Install verified Copilot CLI
-        run: python scripts/agentic/install_tool.py copilot --directory "$RUNNER_TEMP/bin"
+      - name: Install and register the verified pinned Copilot CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/agentic/install_tool.py copilot --directory "$RUNNER_TEMP/bin"
+          python scripts/agentic/workflow.py register-reviewer copilot --binary "$RUNNER_TEMP/bin/copilot" --proof-directory "$RUNNER_TEMP/bin"
       - name: Prepare immutable review packet
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,8 +65,10 @@ jobs:
           REVIEW_SHA: ${{ inputs.head_sha }}
           REVIEW_PROFILE: ${{ inputs.profile }}
         run: |
+          # Hosted review is Copilot-only: a profile that resolves to another backend is refused, never converted.
+          if [ -z "$REVIEW_PROFILE" ]; then REVIEW_PROFILE="$(python -c 'import json; print(json.load(open(".agentic/config.json")).get("hosted_profile") or "")')"; fi
           if [ -n "$REVIEW_PROFILE" ]; then export AGENTIC_PROFILE="$REVIEW_PROFILE"; fi
-          python scripts/agentic/review.py prepare "$REVIEW_PR" --issue "$REVIEW_ISSUE" --plan-comment "$REVIEW_PLAN" --expected-head "$REVIEW_SHA" --output "$RUNNER_TEMP/review"
+          python scripts/agentic/review.py prepare "$REVIEW_PR" --issue "$REVIEW_ISSUE" --plan-comment "$REVIEW_PLAN" --expected-head "$REVIEW_SHA" --output "$RUNNER_TEMP/review" --require-reviewer-backend copilot
       - name: Run independent review through Copilot CLI
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,6 +78,7 @@ jobs:
           export PATH="$RUNNER_TEMP/bin:$PATH"
           python scripts/agentic/review.py run "$RUNNER_TEMP/review"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
         with:
           name: copilot-review-${{ inputs.pr }}-${{ inputs.head_sha }}
           path: ${{ runner.temp }}/review/

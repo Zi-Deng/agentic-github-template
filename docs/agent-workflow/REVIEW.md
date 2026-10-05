@@ -125,7 +125,9 @@ For scientific changes apply [the domain rubric](domain-review.md).
 Complete the protected-environment setup in [SETUP.md](SETUP.md#6-enable-manual-actions-review).
 Then use **Actions → manual Copilot review → Run workflow**, on the default branch.
 Select the PR, issue, plan comment ID and exact head, and optionally a profile name
-(empty means the repository `default_profile`; for example `-f profile=fable-gpt`).
+(empty means the repository `hosted_profile`; for example `-f profile=fable-gpt`). The
+hosted path is Copilot-only: a profile whose reviewer backend is `claude-code` is refused
+by `--require-reviewer-backend copilot`, never converted.
 Choose publication only when you intend to post the generated report; otherwise download
 and inspect the artifact.
 
@@ -146,11 +148,17 @@ Changing the workflow or its credentials is T4 work.
 
 ## Model selection and repair
 
-The reviewer model comes from the active profile: `claude-opus-5` under `astra-claude`,
-`gpt-6-astra` under `fable-gpt`. Each review round freezes that model into its record and
-packet metadata; a profile switch afterwards changes only future rounds. Other model
-versions are separate choices, not automatic substitutes. Choose another explicit Claude
-or GPT ID only after checking account availability and deciding the cost is justified.
+The reviewer comes from the active profile: Copilot `claude-opus-5` under `astra-copilot`,
+Copilot `gpt-6-astra` under `fable-gpt`, Claude Code native `claude-opus-5-5` under
+`astra-claude` (its adapter arrives in a later PR; until then preparation reports
+`claude_reviewer_adapter_not_installed` and runs nothing). Each review round freezes the
+resolved policy (provider, exact model, effort, CLI pin, budget) into its record and packet
+metadata; a profile switch afterwards changes only future rounds. Explicit per-call
+`--review-provider`, `--review-model` and `--review-effort` flags on `review.py prepare`
+override one round and are recorded as `overrides` with their sources; naming only the
+provider resets model and effort to that provider's defaults. Other model versions are
+separate choices, not automatic substitutes. Choose another explicit Claude or GPT ID only
+after checking account availability and deciding the cost is justified.
 Do not use `auto`, a built-in agent that silently selects another family, or the
 implementation conversation as a review session. A reviewer from the implementer's model
 family is refused unless recorded with `--allow-same-family`.

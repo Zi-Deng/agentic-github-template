@@ -1,6 +1,7 @@
 """Exercise real merge gates with deterministic gh output and no Git/model service."""
 
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from test_workflow import workflow
+from test_workflow import SOURCE, workflow
 
 # The shared module establishes the scripts import path.
 # isort: split
@@ -24,9 +25,7 @@ class FinishGateTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
         (root / ".agentic").mkdir()
-        (root / ".agentic/config.json").write_text(
-            json.dumps({"schema_version": 1, "required_checks": ["quality"]})
-        )
+        shutil.copyfile(SOURCE / ".agentic/config.json", root / ".agentic/config.json")
         self.repo = SimpleNamespace(root=root, name="example/project")
 
     @staticmethod

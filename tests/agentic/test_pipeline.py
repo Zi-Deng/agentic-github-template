@@ -212,7 +212,7 @@ class PipelineTests(PipelineFixture):
     def test_review_round_freezes_the_reviewer_and_survives_a_profile_switch(self):
         with patch.object(review, "review", side_effect=self.model_double):
             result = pipeline.review_task(self.repo, 12, execute=True, publish=True)
-        self.assertEqual((result["model"], result["profile"]), ("claude-opus-5", "astra-claude"))
+        self.assertEqual((result["model"], result["profile"]), ("claude-opus-5", "astra-copilot"))
         store = tasks.TaskStore(self.repo)
         state = store.read("issue-12")
         self.assertEqual(state["review_rounds"][-1]["reviewer_model"], "claude-opus-5")
@@ -220,7 +220,7 @@ class PipelineTests(PipelineFixture):
         directory = Path(result["directory"])
         meta = json.loads((directory / "metadata.json").read_text())
         self.assertEqual(meta["reviewer"]["model"], "claude-opus-5")
-        self.assertEqual(meta["provenance"]["profile"], "astra-claude")
+        self.assertEqual(meta["provenance"]["profile"], "astra-copilot")
         with patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}):
             verified = pipeline.validate_designated(self.repo, store.read("issue-12"))
         self.assertEqual(verified["review"]["commit_id"], self.head)
@@ -245,7 +245,7 @@ class PipelineTests(PipelineFixture):
                 pipeline.review_task(self.repo, 12, execute=True)
             # An allowance recorded for the profile's own (codex) pairing does not transfer
             # to this task's pinned Claude implementer.
-            profiles.use_profile(self.repo, "astra-claude", allow_same_family=True, reason="other pairing")
+            profiles.use_profile(self.repo, "astra-copilot", allow_same_family=True, reason="other pairing")
             with self.assertRaisesRegex(workflow.WorkflowError, "implementer family"):
                 pipeline.review_task(self.repo, 12, execute=True)
             profiles.clear_profile(self.repo)

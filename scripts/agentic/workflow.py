@@ -26,6 +26,7 @@ def run(argv, *, cwd=None, input=None, check=True, env=None, timeout=120):
         cwd=cwd,
         input=input,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         env=env,
         timeout=timeout,
@@ -96,20 +97,21 @@ class Repo:
         return self.info["defaultBranchRef"]["name"]
 
     def api(self, suffix, *, data=None, paginate=False, method=None, page_key=None):
-        args = ["gh", "api", f"repos/{self.name}/{suffix}"]
-        if paginate:
-            args += ["--paginate", "--slurp"]
-        if data is not None:
-            args += ["--method", method or "POST", "--input", "-"]
-        elif method:
-            args += ["--method", method]
-        out = run(args, cwd=self.root, input=json.dumps(data) if data is not None else None).stdout
-        result = json.loads(out) if out.strip() else None
-        return (
-            [item for page in result for item in (page[page_key] if page_key else page)]
-            if paginate
-            else result
+        # Exact UTF-8 JSON over urllib; `gh api` terminal rendering is lossy for review text.
+        from github_transport import api
+
+        return api(
+            self.name,
+            suffix,
+            data=data,
+            paginate=paginate,
+            method=method,
+            page_key=page_key,
+            token_source=self.github_token,
         )
+
+    def github_token(self):
+        return run(["gh", "auth", "token", "--hostname", "github.com"], cwd=self.root).stdout.strip()
 
     def fetch(self, *refs):
         # Per-command helper supports private Actions snapshots without persisting a token.
@@ -168,10 +170,89 @@ class Repo:
             yield
 
 
+CONFIG_SCHEMAS = {1, 2, 3}
+
+
 def configuration(root):
-    result = json.loads((Path(root) / ".agentic/config.json").read_text())
-    if result.get("schema_version") not in {1, 2}:
-        raise WorkflowError("Unsupported .agentic/config.json schema (expected 1 or 2)")
+    """Load and strictly validate .agentic/config.json; shims keep schemas 1 and 2 loadable."""
+    try:
+        result = json.loads((Path(root) / ".agentic/config.json").read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise WorkflowError(".agentic/config.json is not valid JSON") from exc
+    if (
+        not isinstance(result, dict)
+        or type(result.get("schema_version")) is not int
+        or result["schema_version"] not in CONFIG_SCHEMAS
+    ):
+        raise WorkflowError("Unsupported .agentic/config.json schema (expected schema_version 1, 2 or 3)")
+    result.setdefault("max_diff_bytes", None)
+    result.setdefault("managed_max_prompt_bytes", 300_000)
+    result.setdefault("review_max_estimated_usd", 10)
+    result.setdefault("review_model_extensions", [])
+    result.setdefault("claude_review_login_root", None)
+    result.setdefault("private_paths", [])
+    if result["schema_version"] == 3:
+        result.setdefault("hosted_profile", None)
+    for key in ("max_diff_bytes", "managed_max_prompt_bytes"):
+        value = result[key]
+        if key == "max_diff_bytes" and value is None:
+            continue
+        if type(value) is not int or value <= 0:
+            suffix = " or null (unlimited)" if key == "max_diff_bytes" else ""
+            raise WorkflowError(f"{key} must be a positive integer{suffix}")
+    for key in (
+        "review_timeout_seconds",
+        "review_max_ai_credits",
+        "max_source_file_bytes",
+        "max_snapshot_bytes",
+    ):
+        if type(result.get(key)) is not int or result[key] <= 0:
+            raise WorkflowError(f"{key} is required and must be a positive integer")
+    for key in ("managed_timeout_seconds", "managed_max_output_bytes"):
+        if key in result and (type(result[key]) is not int or result[key] <= 0):
+            raise WorkflowError(f"{key} must be a positive integer when supplied")
+    estimate = result["review_max_estimated_usd"]
+    if type(estimate) not in {int, float} or not 0 < estimate <= 10:
+        raise WorkflowError("review_max_estimated_usd must be a number in (0, 10]")
+    if not isinstance(result["review_model_extensions"], list):
+        raise WorkflowError("review_model_extensions must be a list of compatibility declarations")
+    login_root = result["claude_review_login_root"]
+    if login_root is not None and (
+        not isinstance(login_root, str)
+        or not login_root.strip()
+        or not Path(login_root).expanduser().is_absolute()
+        or ".." in Path(login_root).parts
+    ):
+        raise WorkflowError("claude_review_login_root must be null or an absolute path")
+    prefixes = result["private_paths"]
+    if (
+        not isinstance(prefixes, list)
+        or any(
+            not isinstance(item, str)
+            or not item
+            or len(item) > 200
+            or item.startswith("/")
+            or "\\" in item
+            or "\0" in item
+            or any(part in {"", ".", ".."} for part in item.rstrip("/").split("/"))
+            for item in prefixes
+        )
+        or len(set(prefixes)) != len(prefixes)
+    ):
+        raise WorkflowError("private_paths must be a list of unique repository-relative prefixes")
+    if not isinstance(result.get("domain_rubric"), str) or not result["domain_rubric"].strip():
+        raise WorkflowError("domain_rubric is required and must be a nonempty string")
+    checks = result.get("required_checks")
+    if (
+        not isinstance(checks, list)
+        or not checks
+        or any(not isinstance(item, str) or not item.strip() or item != item.strip() for item in checks)
+        or len(set(checks)) != len(checks)
+    ):
+        raise WorkflowError("required_checks must be a nonempty list of unique check names")
+    from profiles import load_profiles
+
+    load_profiles(result)
     return result
 
 
@@ -502,6 +583,12 @@ def main():
     merge = sub.add_parser("merge-preflight")
     merge.add_argument("pr")
     merge.add_argument("--reviewed-sha", required=True)
+    register = sub.add_parser(
+        "register-reviewer", help="Verify and privately register a pinned reviewer binary"
+    )
+    register.add_argument("provider", choices=["copilot", "claude-code"])
+    register.add_argument("--binary", required=True)
+    register.add_argument("--proof-directory", required=True)
     agent = sub.add_parser("launch")
     agent.add_argument("role", choices=["draft", "plan", "implement", "repair"])
     agent.add_argument("task")
@@ -526,6 +613,16 @@ def main():
             profiles_view = listing(repo)
             active = profiles_view["active"]
             backend = profiles_view["profiles"][active]["implementer"]["backend"] if active else None
+            try:
+                import review_policy
+                from profiles import review_selection
+
+                cfg = configuration(repo.root)
+                selection_view = review_policy.status(
+                    repo, cfg, review_selection(repo, cfg, warn_same_family=False)
+                )
+            except WorkflowError as exc:
+                selection_view = {"error": str(exc)}
             result = {
                 "root": str(repo.root),
                 "main": str(repo.main),
@@ -535,6 +632,7 @@ def main():
                 "github_authenticated": auth["gh"] is True,
                 "profile": profiles_view,
                 "active_implementer_backend": backend,
+                "review_selection": selection_view,
                 "containment_default": "restricted",
                 "claude_transcripts": str(Path.home() / ".claude/projects") if tools["claude"] else None,
                 "config": configuration(repo.root),
@@ -579,6 +677,10 @@ def main():
             result = ruleset(repo, args.check)
         elif args.command == "merge-preflight":
             result = merge_preflight(repo, positive(args.pr), args.reviewed_sha)
+        elif args.command == "register-reviewer":
+            import review_cli
+
+            result = review_cli.register(repo, args.provider, args.binary, args.proof_directory)
         elif args.command == "launch":
             result = launch(
                 repo,

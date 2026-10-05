@@ -1,5 +1,7 @@
 """Exercise destructive boundaries using real temporary Git repositories."""
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -15,6 +17,7 @@ sys.path.insert(0, str(SOURCE / "scripts/agentic"))
 import install  # noqa: E402
 import profiles  # noqa: E402
 import review  # noqa: E402
+import review_policy  # noqa: E402
 import workflow  # noqa: E402
 
 
@@ -341,6 +344,160 @@ class ReviewTests(GitFixture):
         (directory / "packet/diff.txt").write_text("tampered")
         with self.assertRaisesRegex(workflow.WorkflowError, "changed"):
             review.verify_packet(directory)
+
+    def test_unlimited_diff_cap_accepts_a_diff_above_the_shipped_cap(self):
+        self.commit_task()
+        (self.task_path / "large.txt").write_text("é" * 160_000 + "\n", encoding="utf-8")
+        git(self.task_path, "add", "large.txt")
+        git(self.task_path, "commit", "-m", "large text fixture")
+        self.pr_data["head"]["sha"] = git(self.task_path, "rev-parse", "HEAD")
+        git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
+        with self.assertRaisesRegex(workflow.WorkflowError, "max_diff_bytes"):
+            review.prepare(self.repo, 31, 12, 1234)
+        cfg = workflow.configuration(self.root)
+        cfg["max_diff_bytes"] = None
+        with patch.object(review, "configuration", return_value=cfg):
+            directory = review.prepare(self.repo, 31, 12, 1234)
+        self.assertGreater((directory / "packet/diff.txt").stat().st_size, 300_000)
+        index = json.loads((directory / "packet/source-index.json").read_text())
+        self.assertIn("omitted", next(item for item in index if item["path"] == "large.txt"))
+
+    def test_opt_in_diff_cap_is_inclusive_and_counts_utf8_bytes(self):
+        self.commit_task()
+        (self.task_path / "code.py").write_text('value = "é"\n', encoding="utf-8")
+        git(self.task_path, "commit", "-am", "unicode diff fixture")
+        self.pr_data["head"]["sha"] = git(self.task_path, "rev-parse", "HEAD")
+        git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
+        packet = review.prepare(self.repo, 31, 12, 1234)
+        diff = (packet / "packet/diff.txt").read_text(encoding="utf-8")
+        byte_count = len(diff.encode("utf-8"))
+        self.assertGreater(byte_count, len(diff))
+        cfg = workflow.configuration(self.root)
+        for cap, accepted in [(byte_count, True), (byte_count - 1, False)]:
+            cfg["max_diff_bytes"] = cap
+            with patch.object(review, "configuration", return_value=cfg):
+                if accepted:
+                    self.assertTrue(review.prepare(self.repo, 31, 12, 1234).is_dir())
+                else:
+                    with self.assertRaisesRegex(workflow.WorkflowError, "max_diff_bytes"):
+                        review.prepare(self.repo, 31, 12, 1234)
+
+    def test_unlimited_diff_still_rejects_empty_change(self):
+        self.commit_task()
+        self.pr_data["head"]["sha"] = self.base
+        cfg = workflow.configuration(self.root)
+        cfg["max_diff_bytes"] = None
+        with patch.object(review, "configuration", return_value=cfg):
+            with self.assertRaisesRegex(workflow.WorkflowError, "Diff is empty"):
+                review.prepare(self.repo, 31, 12, 1234)
+
+    def test_configured_private_prefixes_exclude_adopter_data_trees(self):
+        self.commit_task()
+        (self.task_path / "files/input").mkdir(parents=True)
+        (self.task_path / "files/input/sample.txt").write_text("private dataset row")
+        git(self.task_path, "add", "files/input/sample.txt")
+        git(self.task_path, "commit", "-m", "data fixture")
+        self.pr_data["head"]["sha"] = git(self.task_path, "rev-parse", "HEAD")
+        git(self.task_path, "push", "origin", "HEAD:refs/pull/31/head")
+        directory = review.prepare(self.repo, 31, 12, 1234)
+        index = json.loads((directory / "packet/source-index.json").read_text())
+        self.assertIn("snapshot", next(item for item in index if item["path"] == "files/input/sample.txt"))
+        cfg = workflow.configuration(self.root)
+        cfg["private_paths"] = ["files/input"]
+        with patch.object(review, "configuration", return_value=cfg):
+            with self.assertRaisesRegex(workflow.WorkflowError, "private/data"):
+                review.prepare(self.repo, 31, 12, 1234)
+        self.assertTrue(review.private_path("files/input/sample.txt", ["files/input"]))
+        self.assertFalse(review.private_path("files/inputs/sample.txt", ["files/input"]))
+
+    def test_prepare_records_overrides_and_refuses_uninstalled_reviewer_backends(self):
+        self.commit_task()
+        with self.assertRaisesRegex(workflow.WorkflowError, "implementer family"):
+            review.prepare(self.repo, 31, 12, 1234, review_model="gpt-6-astra")
+        with contextlib.redirect_stderr(io.StringIO()):
+            directory = review.prepare(
+                self.repo, 31, 12, 1234, review_model="gpt-6-astra", allow_same_family=True
+            )
+        meta = review.verify_packet(directory)
+        self.assertEqual(meta["requested_model"], "gpt-6-astra")
+        self.assertEqual(meta["reviewer"]["backend"], "copilot")
+        self.assertEqual(meta["review_policy"]["model"], "gpt-6-astra")
+        self.assertEqual(
+            meta["review_policy"]["cli"]["version"], review_policy.PROVIDERS["copilot"]["cli"]["version"]
+        )
+        self.assertEqual(meta["selection_sources"]["model"], "per-call")
+        self.assertEqual(meta["overrides"]["review_model"], "gpt-6-astra")
+        self.assertTrue(meta["provenance"]["same_family_acknowledged"])
+        self.assertEqual(meta["provenance"]["profile"], "astra-copilot")
+        with patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}):
+            with self.assertRaisesRegex(workflow.WorkflowError, "adapter is not installed"):
+                review.prepare(self.repo, 31, 12, 1234)
+            with self.assertRaisesRegex(workflow.WorkflowError, "requires a reviewer backend of copilot"):
+                review.prepare(self.repo, 31, 12, 1234, require_backend="copilot")
+            switched = review.prepare(
+                self.repo, 31, 12, 1234, review_provider="copilot", require_backend="copilot"
+            )
+        meta = review.verify_packet(switched)
+        self.assertEqual(meta["provenance"]["profile"], "astra-claude")
+        self.assertEqual(meta["selection_sources"]["provider"], "per-call")
+        self.assertEqual(meta["review_policy"]["budget"]["ai_credits"], 400)
+        self.assertFalse(list((self.root / ".agentic-local/reviews").glob("*/review.md")))
+
+    def test_non_default_effort_is_passed_to_copilot_and_checked_in_help(self):
+        self.commit_task()
+        directory = review.prepare(self.repo, 31, 12, 1234, review_effort="high")
+        meta = review.verify_packet(directory)
+        self.assertEqual((meta["reviewer"]["effort"], meta["review_policy"]["effort"]), ("high", "high"))
+        original = review.run
+        observed = []
+
+        def fake(args, **kwargs):
+            if args[0] != "copilot":
+                return original(args, **kwargs)
+            if args[1] == "--help":
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    "--available-tools --no-custom-instructions --disable-builtin-mcps --no-remote-export --no-ask-user --usage-output-file --max-ai-credits",
+                    "",
+                )
+            if args[1] == "--version":
+                return subprocess.CompletedProcess(args, 0, "Copilot test double\n", "")
+            observed.append(args)
+            return subprocess.CompletedProcess(
+                args, 0, "No material findings supported by this review.\n", ""
+            )
+
+        with (
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
+            patch.object(review, "run", side_effect=fake),
+        ):
+            with self.assertRaisesRegex(workflow.WorkflowError, "--effort"):
+                review.review(self.repo, directory)
+        self.assertEqual(observed, [])
+
+        def capable(args, **kwargs):
+            if args[0] == "copilot" and args[1] == "--help":
+                return subprocess.CompletedProcess(args, 0, fake(args, **kwargs).stdout + " --effort", "")
+            return fake(args, **kwargs)
+
+        with (
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
+            patch.object(review, "run", side_effect=capable),
+        ):
+            review.review(self.repo, directory)
+        argv = observed[0]
+        self.assertEqual(argv[argv.index("--effort") + 1], "high")
+        meta = review.verify_packet(directory)
+        meta["reviewer"]["effort"] = "low"
+        workflow.write_json(directory / "metadata.json", meta)
+        (directory / "review.md").unlink()
+        with (
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-test-token"}),
+            patch.object(review, "run", side_effect=capable),
+        ):
+            with self.assertRaisesRegex(workflow.WorkflowError, "immutable review policy"):
+                review.review(self.repo, directory)
 
     def test_symlinks_are_never_dereferenced(self):
         (self.root / "secret-link.py").symlink_to("/etc/passwd")

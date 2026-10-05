@@ -23,12 +23,13 @@ flowchart LR
   M --> X[Archive artifacts and verify cleanup]
 ```
 
-**Model policy:** two switchable profiles, declared in `.agentic/config.json`:
+**Model policy:** three switchable profiles, declared in `.agentic/config.json` (schema 3):
 
-| Profile | Implementer (draft, plan, implement, repair) | Independent reviewer (Copilot CLI) | Default |
+| Profile | Implementer (draft, plan, implement, repair) | Independent reviewer | Default |
 | --- | --- | --- | --- |
-| `astra-claude` | Codex CLI, `gpt-6-astra`, ChatGPT account | `claude-opus-5` | yes |
-| `fable-gpt` | Claude Code, `claude-fable-5-1`, Claude subscription | `gpt-6-astra` | no |
+| `astra-copilot` | Codex CLI, `gpt-6-astra`, ChatGPT account | Copilot CLI, `claude-opus-5` | yes (also the hosted Actions profile) |
+| `astra-claude` | Codex CLI, `gpt-6-astra`, ChatGPT account | Claude Code native, `claude-opus-5-5`, effort `medium` (adapter ships in a later PR; selecting it today reports `claude_reviewer_adapter_not_installed`) | no |
+| `fable-gpt` | Claude Code, `claude-fable-5-1`, Claude subscription | Copilot CLI, `gpt-6-astra` | no |
 
 `python3 scripts/agentic/workflow.py profile use fable-gpt` switches this checkout through
 an ignored local file; `AGENTIC_PROFILE=fable-gpt` overrides one command; `profile show`
@@ -95,8 +96,9 @@ ignored artifacts, and clean up verified branches.
 
 - Eight repository skills (mirrored for Claude Code), approved-contract records and a
   resumable implementer session pinned per task.
-- Two switchable implementer/reviewer profiles, restricted-by-default Claude containment,
-  and a reviewer model frozen per review round.
+- Three switchable implementer/reviewer profiles with a closed reviewer catalog, pinned
+  reviewer binaries, restricted-by-default Claude containment, and an immutable review
+  policy (provider, exact model, effort, CLI pin, budget) frozen per review round.
 - A human-run finish script with recoverable artifact archival and guarded branch cleanup.
 - Required issue fields and a PR template separating software evidence from domain evidence.
 - Sibling task worktrees, existing-branch recovery, draft PR creation and merge preflight.

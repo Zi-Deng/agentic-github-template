@@ -124,6 +124,7 @@ def install(source, target, apply=False):
         "applied": False,
         "next": (
             "Merge /memory/, /.agentic-local/ and /.claude/settings.local.json into .gitignore; "
+            "set profiles, hosted_profile, required_checks and private_paths in .agentic/config.json; "
             "adapt AGENTS, domain rubric and project CI. See SETUP.md."
         ),
     }

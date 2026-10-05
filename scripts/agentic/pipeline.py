@@ -6,7 +6,7 @@ import re
 import subprocess
 
 import review as independent
-from profiles import active_profile, note, pinned_executor, warn
+from profiles import note, pinned_executor, review_selection, warn
 from tasks import (
     TaskStore,
     body_text,
@@ -347,29 +347,29 @@ def review_task(
     with store.locked(f"issue-{number}") as state:
         contract = verify_contract(repo, state)
         pr = current_task_pr(repo, state)
-        profile = active_profile(repo, configuration(repo.root))
-        reviewer = profile["reviewer"]
         executor = state.get("executor")
         implementer = None
         if executor:
             pinned = pinned_executor(executor)
             implementer = {"backend": pinned["backend"], "model": pinned["model"], "family": pinned["family"]}
-        same_family = implementer is not None and implementer["family"] == reviewer["family"]
-        # A recorded profile-level allowance covers only the pairing it was recorded for:
-        # the profile's own declared implementer. Any other pinned implementer needs the flag.
-        declared = profile["implementer"]
-        recorded_applies = (
-            profile["allow_same_family"]
-            and implementer is not None
-            and implementer["backend"] == declared["backend"]
-            and implementer["model"] in (None, declared["model"])
+        # The task's pinned executor, not the profile's declared implementer, is what the
+        # same-family gate compares against; a recorded profile allowance covers only its own pairing.
+        selection = review_selection(
+            repo,
+            configuration(repo.root),
+            implementer=implementer,
+            allow_same_family=allow_same_family,
+            warn_same_family=False,
         )
-        acknowledged = bool(allow_same_family or recorded_applies)
-        if same_family and not acknowledged:
-            raise WorkflowError(
-                f"Reviewer model {reviewer['model']} shares the task's implementer family ({reviewer['family']}); "
-                "switch profile or pass --allow-same-family to record this exception"
-            )
+        policy = selection["policy"]
+        reviewer = {
+            "backend": policy["provider"],
+            "model": policy["model"],
+            "effort": policy["effort"],
+            "family": selection["reviewer_family"],
+        }
+        same_family = selection["provenance"]["same_family"]
+        acknowledged = selection["provenance"]["same_family_acknowledged"]
         if same_family:
             warn(
                 f"review round for issue {number} uses the implementer's model family ({reviewer['family']})"
@@ -407,24 +407,21 @@ def review_task(
                 number,
                 state["approval"]["plan_comment"],
                 expected_head=binding["head_sha"],
-                reviewer=reviewer,
-                provenance={
-                    "profile": profile["name"],
-                    "implementer": implementer,
-                    "same_family": same_family,
-                },
+                selection=selection,
             )
             record = {
                 **binding,
                 "directory": str(directory),
                 "status": "prepared",
                 "run_attempted": False,
-                "reviewer_backend": "copilot",
+                "reviewer_backend": reviewer["backend"],
                 "reviewer_model": reviewer["model"],
+                "reviewer_effort": reviewer["effort"],
                 "reviewer_family": reviewer["family"],
-                "profile": profile["name"],
+                "review_policy": policy,
+                "profile": selection["profile"],
                 "same_family": same_family,
-                "same_family_acknowledged": acknowledged if same_family else None,
+                "same_family_acknowledged": acknowledged,
             }
             rounds.append(record)
             store.save(state)

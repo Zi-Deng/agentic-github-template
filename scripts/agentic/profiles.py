@@ -1,4 +1,4 @@
-"""Profile resolution: which implementer backend/model and reviewer model are active."""
+"""Profile resolution: which implementer backend/model and reviewer policy are active."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ import os
 import re
 import shutil
 import sys
+from pathlib import Path
 
+import review_policy
 from tasks import atomic_json, plain_path
 from workflow import WorkflowError, configuration, run
 
@@ -20,10 +22,10 @@ LEGACY_BACKEND = "codex"
 FAMILIES = {"gpt": "openai", "claude": "anthropic"}
 BACKEND_FAMILIES = {"codex": "openai", "claude": "anthropic"}
 IMPLEMENTER_BACKENDS = ("codex", "claude")
+REVIEWER_BACKENDS = ("copilot", "claude-code")
 MODEL_PATTERNS = {
     "codex": r"gpt-[a-z0-9.-]+",
     "claude": r"claude-[a-z0-9.-]+",
-    "copilot": r"(?:gpt|claude)-[a-z0-9.-]+",
 }
 NAME_PATTERN = r"[a-z0-9][a-z0-9-]{0,39}"
 SETTING_SOURCES = ("user", "project", "local")
@@ -40,7 +42,21 @@ IMPLEMENTER_KEYS = {
         "max_budget_usd",
     },
 }
-REVIEWER_KEYS = {"backend", "model", "max_ai_credits", "timeout_seconds"}
+REVIEWER_KEYS = {
+    "copilot": {"backend", "model", "effort", "max_ai_credits", "timeout_seconds", "cli_version", "adapter"},
+    "claude-code": {
+        "backend",
+        "model",
+        "effort",
+        "max_estimated_usd",
+        "timeout_seconds",
+        "login_root",
+        "billing_mode",
+        "cli_version",
+        "adapter",
+    },
+}
+SUPPORTED_SCHEMAS = (1, 2, 3)
 
 
 def warn(message):
@@ -59,6 +75,8 @@ def family(model):
 
 
 def validate_model(backend, model):
+    if backend not in MODEL_PATTERNS:
+        raise WorkflowError(f"Unsupported implementer backend {backend!r}")
     if not isinstance(model, str) or not re.fullmatch(MODEL_PATTERNS[backend], model):
         raise WorkflowError(
             f"{backend} model must be an explicit ID matching {MODEL_PATTERNS[backend]}, not {model!r}; "
@@ -74,6 +92,17 @@ def tool_rules(value, label):
     ):
         raise WorkflowError(f"{label} must be a list of tool permission rules such as Bash(npm test *)")
     return list(value)
+
+
+def absolute_path(value, label):
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise WorkflowError(f"{label} must be null or an absolute path")
+    path = Path(value).expanduser()
+    if not path.is_absolute() or ".." in path.parts:
+        raise WorkflowError(f"{label} must be an absolute path without parent components")
+    return str(path)
 
 
 def normalize_implementer(name, spec):
@@ -136,51 +165,140 @@ def positive_int(value, label):
     return value
 
 
-def normalize_reviewer(name, spec):
+def normalize_reviewer(name, spec, cfg, *, allow_claude_code=True):
     if not isinstance(spec, dict):
         raise WorkflowError(f"Profile {name!r} needs a reviewer object")
-    if spec.get("backend") != "copilot":
-        raise WorkflowError(f"Profile {name!r}: reviewer backend must be copilot")
-    unknown = set(spec) - REVIEWER_KEYS
+    backend = spec.get("backend")
+    if backend not in REVIEWER_BACKENDS:
+        raise WorkflowError(
+            f"Profile {name!r}: reviewer backend must be copilot or claude-code, not {backend!r}"
+        )
+    if backend == "claude-code" and not allow_claude_code:
+        raise WorkflowError(f"Profile {name!r}: reviewer backend claude-code requires schema_version 3")
+    unknown = set(spec) - REVIEWER_KEYS[backend]
     if unknown:
-        raise WorkflowError(f"Profile {name!r}: unknown reviewer keys: {', '.join(sorted(unknown))}")
-    model = validate_model("copilot", spec.get("model"))
-    return {
-        "backend": "copilot",
-        "model": model,
-        "family": family(model),
-        "max_ai_credits": positive_int(spec.get("max_ai_credits"), "reviewer max_ai_credits"),
-        "timeout_seconds": positive_int(spec.get("timeout_seconds"), "reviewer timeout_seconds"),
+        raise WorkflowError(
+            f"Profile {name!r}: unknown reviewer keys for {backend}: {', '.join(sorted(unknown))}"
+        )
+    if not isinstance(spec.get("model"), str):
+        raise WorkflowError(
+            f"Profile {name!r}: reviewer model must be an explicit exact model ID, never defaulted"
+        )
+    try:
+        selected = review_policy.choices(backend, spec.get("model"), spec.get("effort"), cfg=cfg)
+    except WorkflowError as exc:
+        raise WorkflowError(f"Profile {name!r}: {exc}") from None
+    provider = review_policy.PROVIDERS[backend]
+    for key, expected in (("cli_version", provider["cli"]["version"]), ("adapter", provider["adapter"])):
+        if key in spec and spec[key] != expected:
+            raise WorkflowError(
+                f"Profile {name!r} pins reviewer {key} {spec[key]!r}, but this harness ships {expected!r}"
+            )
+    result = {
+        "backend": backend,
+        "model": selected["model"],
+        "effort": selected["effort"],
+        "family": family(selected["model"]),
+        "timeout_seconds": positive_int(
+            spec.get("timeout_seconds"), f"Profile {name!r} reviewer timeout_seconds"
+        ),
     }
+    if result["timeout_seconds"] is not None and result["timeout_seconds"] > 900:
+        raise WorkflowError(f"Profile {name!r}: reviewer timeout_seconds must be at most 900")
+    if backend == "copilot":
+        result["max_ai_credits"] = positive_int(
+            spec.get("max_ai_credits"), f"Profile {name!r} reviewer max_ai_credits"
+        )
+        return result
+    estimate = spec.get("max_estimated_usd")
+    if estimate is not None and (
+        isinstance(estimate, bool) or not isinstance(estimate, int | float) or not 0 < estimate <= 10
+    ):
+        raise WorkflowError(f"Profile {name!r}: reviewer max_estimated_usd must be null or in (0, 10]")
+    billing = spec.get("billing_mode", provider["billing_mode"])
+    if billing != provider["billing_mode"]:
+        raise WorkflowError(f"Profile {name!r}: reviewer billing_mode must be {provider['billing_mode']!r}")
+    result.update(
+        max_estimated_usd=estimate,
+        login_root=absolute_path(spec.get("login_root"), f"Profile {name!r} reviewer login_root"),
+        billing_mode=billing,
+    )
+    return result
 
 
-def load_profiles(cfg):
+def shimmed_specs(cfg):
+    """Derive profile specifications from older configuration dialects without rewriting them."""
     version = cfg.get("schema_version")
+    has_profiles = "profiles" in cfg or "default_profile" in cfg
+    has_models = "openai_model" in cfg or "copilot_model" in cfg
+    has_review = any(key in cfg for key in ("review_provider", "review_model", "review_effort"))
     if version == 1:
-        if "profiles" in cfg or "default_profile" in cfg:
-            raise WorkflowError("Declare profiles with schema_version 2")
+        if has_profiles or has_review:
+            raise WorkflowError("Declare profiles with schema_version 3")
         if "openai_model" not in cfg or "copilot_model" not in cfg:
             raise WorkflowError(
-                "Schema 1 configuration lacks openai_model/copilot_model; migrate to schema 2 profiles"
+                "Schema 1 configuration lacks openai_model/copilot_model; migrate to schema 3 profiles"
             )
         specs = {
             LEGACY_NAME: {
                 "implementer": {"backend": "codex", "model": cfg["openai_model"]},
-                "reviewer": {"backend": "copilot", "model": cfg["copilot_model"]},
+                "reviewer": {"backend": "copilot", "model": cfg["copilot_model"], "effort": "default"},
             }
         }
-        default = LEGACY_NAME
-    elif version == 2:
-        if "openai_model" in cfg or "copilot_model" in cfg:
-            raise WorkflowError("Schema 2 declares models inside profiles; remove openai_model/copilot_model")
-        specs = cfg.get("profiles")
-        if not isinstance(specs, dict) or not specs:
-            raise WorkflowError("Schema 2 configuration needs a nonempty profiles object")
-        default = cfg.get("default_profile")
-        if default not in specs:
-            raise WorkflowError("default_profile must name a declared profile")
-    else:
-        raise WorkflowError("Unsupported .agentic/config.json schema (expected 1 or 2)")
+        return specs, LEGACY_NAME, None, True, False
+    if version == 2:
+        if has_profiles:
+            if has_models or has_review:
+                raise WorkflowError(
+                    "Schema 2 declares models inside profiles; remove openai_model/copilot_model"
+                )
+            return cfg.get("profiles"), cfg.get("default_profile"), cfg.get("hosted_profile"), True, False
+        if "openai_model" not in cfg or "copilot_model" not in cfg:
+            raise WorkflowError("Schema 2 configuration needs profiles, or openai_model/copilot_model")
+        provider = cfg.get("review_provider", "claude-code")
+        if provider not in REVIEWER_BACKENDS:
+            raise WorkflowError(f"Unsupported review_provider {provider!r}")
+        copilot_model = cfg.get("review_model") if provider == "copilot" else cfg["copilot_model"]
+        specs = {
+            "legacy-copilot": {
+                "implementer": {"backend": "codex", "model": cfg["openai_model"]},
+                "reviewer": {
+                    "backend": "copilot",
+                    "model": copilot_model or review_policy.PROVIDERS["copilot"]["model"],
+                    "effort": (cfg.get("review_effort") if provider == "copilot" else None) or "default",
+                },
+            }
+        }
+        default = "legacy-copilot"
+        if provider == "claude-code":
+            reviewer = {
+                "backend": "claude-code",
+                "model": cfg.get("review_model") or review_policy.PROVIDERS["claude-code"]["model"],
+                "effort": cfg.get("review_effort") or review_policy.PROVIDERS["claude-code"]["effort"],
+            }
+            if cfg.get("review_max_estimated_usd") is not None:
+                reviewer["max_estimated_usd"] = cfg["review_max_estimated_usd"]
+            specs["legacy-claude-code"] = {
+                "implementer": {"backend": "codex", "model": cfg["openai_model"]},
+                "reviewer": reviewer,
+            }
+            default = "legacy-claude-code"
+        return specs, default, "legacy-copilot", True, True
+    if version == 3:
+        if has_models or has_review:
+            raise WorkflowError(
+                "Schema 3 declares the reviewer inside profiles; remove openai_model, copilot_model and review_*"
+            )
+        return cfg.get("profiles"), cfg.get("default_profile"), cfg.get("hosted_profile"), False, True
+    raise WorkflowError("Unsupported .agentic/config.json schema (expected 1, 2 or 3)")
+
+
+def load_profiles(cfg):
+    specs, default, hosted, shimmed, allow_claude_code = shimmed_specs(cfg)
+    if not isinstance(specs, dict) or not specs:
+        raise WorkflowError("Configuration needs a nonempty profiles object")
+    if default not in specs:
+        raise WorkflowError("default_profile must name a declared profile")
     profiles = {}
     for name, spec in specs.items():
         if not isinstance(name, str) or not re.fullmatch(NAME_PATTERN, name):
@@ -188,14 +306,46 @@ def load_profiles(cfg):
         if not isinstance(spec, dict) or set(spec) != {"implementer", "reviewer"}:
             raise WorkflowError(f"Profile {name!r} must declare exactly implementer and reviewer")
         implementer = normalize_implementer(name, spec["implementer"])
-        reviewer = normalize_reviewer(name, spec["reviewer"])
+        reviewer = normalize_reviewer(name, spec["reviewer"], cfg, allow_claude_code=allow_claude_code)
         profiles[name] = {
             "name": name,
             "implementer": implementer,
             "reviewer": reviewer,
             "same_family": implementer["family"] == reviewer["family"],
         }
-    return {"default_profile": default, "profiles": profiles}
+    if hosted is not None:
+        if hosted not in profiles:
+            raise WorkflowError("hosted_profile must name a declared profile")
+        if profiles[hosted]["reviewer"]["backend"] != "copilot":
+            raise WorkflowError(
+                "hosted_profile must resolve to a copilot reviewer; hosted review is Copilot-only"
+            )
+    return {
+        "default_profile": default,
+        "hosted_profile": hosted,
+        "profiles": profiles,
+        "config_schema": cfg.get("schema_version"),
+        "shimmed": shimmed,
+    }
+
+
+def migration_hint(declared):
+    return {
+        "schema_version": 3,
+        "default_profile": declared["default_profile"],
+        **({"hosted_profile": declared["hosted_profile"]} if declared["hosted_profile"] else {}),
+        "profiles": {
+            name: {
+                "implementer": {key: value for key, value in p["implementer"].items() if key != "family"},
+                "reviewer": {
+                    key: value
+                    for key, value in p["reviewer"].items()
+                    if key != "family" and value is not None
+                },
+            }
+            for name, p in declared["profiles"].items()
+        },
+    }
 
 
 def private_root(repo):
@@ -242,6 +392,17 @@ def same_family_message(profile):
 def active_profile(repo, cfg=None, *, warn_same_family=True):
     cfg = configuration(repo.root) if cfg is None else cfg
     declared = load_profiles(cfg)
+    if declared["shimmed"]:
+        note(
+            "configuration schema "
+            f"{declared['config_schema']} was shimmed into profiles; the schema 3 equivalent is "
+            + json.dumps(migration_hint(declared), separators=(",", ":"))
+        )
+    stale = plain_path(private_root(repo) / "review-selection.json")
+    if stale.exists():
+        warn(
+            "saved review selection (.agentic-local/review-selection.json) is no longer honored; use `profile use`"
+        )
     env_name = os.environ.get(ENV_NAME, "").strip()
     local = local_selection(repo)
     if env_name:
@@ -268,6 +429,118 @@ def active_profile(repo, cfg=None, *, warn_same_family=True):
                 f"independent review diversity is reduced (recorded reason: {local.get('reason') or 'none'})"
             )
     return profile
+
+
+def login_root(cfg, reviewer):
+    if reviewer["backend"] != "claude-code":
+        return None
+    return reviewer.get("login_root") or absolute_path(
+        cfg.get("claude_review_login_root"), "claude_review_login_root"
+    )
+
+
+def effective_budget_config(cfg, reviewer, provider):
+    """Top-level budgets, replaced by the profile's own values only for its own backend."""
+    budgets = {
+        "review_timeout_seconds": cfg.get("review_timeout_seconds", 900),
+        "review_max_ai_credits": cfg.get("review_max_ai_credits", 400),
+        "review_max_estimated_usd": cfg.get("review_max_estimated_usd", 10),
+        "review_model_extensions": cfg.get("review_model_extensions", []),
+        "schema_version": cfg.get("schema_version"),
+    }
+    if provider == reviewer["backend"]:
+        if reviewer.get("timeout_seconds") is not None:
+            budgets["review_timeout_seconds"] = reviewer["timeout_seconds"]
+        if provider == "copilot" and reviewer.get("max_ai_credits") is not None:
+            budgets["review_max_ai_credits"] = reviewer["max_ai_credits"]
+        if provider == "claude-code" and reviewer.get("max_estimated_usd") is not None:
+            budgets["review_max_estimated_usd"] = reviewer["max_estimated_usd"]
+    return budgets
+
+
+def review_selection(
+    repo,
+    cfg=None,
+    *,
+    review_provider=None,
+    review_model=None,
+    review_effort=None,
+    implementer=None,
+    allow_same_family=False,
+    require_backend=None,
+    warn_same_family=True,
+):
+    """Resolve the active profile plus explicit per-call overrides into an immutable review policy."""
+    cfg = configuration(repo.root) if cfg is None else cfg
+    profile = active_profile(repo, cfg, warn_same_family=False)
+    reviewer = profile["reviewer"]
+    selected = {"provider": reviewer["backend"], "model": reviewer["model"], "effort": reviewer["effort"]}
+    sources = dict.fromkeys(selected, "profile")
+    overrides = None
+    if any(value is not None for value in (review_provider, review_model, review_effort)):
+        overrides = {
+            "review_provider": review_provider,
+            "review_model": review_model,
+            "review_effort": review_effort,
+        }
+        if review_provider is not None:
+            selected = review_policy.choices(review_provider)
+            sources = dict.fromkeys(selected, "per-call-provider-default")
+            sources["provider"] = "per-call"
+        for key, value in (("model", review_model), ("effort", review_effort)):
+            if value is not None:
+                selected[key], sources[key] = value, "per-call"
+    if require_backend is not None and selected["provider"] != require_backend:
+        raise WorkflowError(
+            f"This path requires a reviewer backend of {require_backend}; profile {profile['name']!r} "
+            f"resolves to {selected['provider']}"
+        )
+    policy = review_policy.policy(selected, effective_budget_config(cfg, reviewer, selected["provider"]))
+    reviewer_family = family(policy["model"])
+    if implementer is None:
+        declared = profile["implementer"]
+        implementer = {
+            "backend": declared["backend"],
+            "model": declared["model"],
+            "family": declared["family"],
+        }
+        implementer_source = "active profile (no task record)"
+    else:
+        implementer_source = "pinned executor"
+    same_family = reviewer_family == implementer["family"]
+    declared = profile["implementer"]
+    # A recorded profile-level allowance covers only the pairing it was recorded for:
+    # the profile's own declared implementer and reviewer. Overrides never inherit it.
+    recorded_applies = (
+        profile["allow_same_family"]
+        and overrides is None
+        and implementer["backend"] == declared["backend"]
+        and implementer.get("model") in (None, declared["model"])
+    )
+    acknowledged = bool(allow_same_family or recorded_applies)
+    if same_family and not acknowledged:
+        raise WorkflowError(
+            f"Reviewer model {policy['model']} shares the implementer family ({reviewer_family}); "
+            "switch profile or pass --allow-same-family to record this exception"
+            + ("; a recorded profile allowance never covers a per-call override" if overrides else "")
+        )
+    if same_family and warn_same_family:
+        warn(f"review selection pairs same-family implementer and reviewer ({reviewer_family})")
+    return {
+        "profile": profile["name"],
+        "policy": policy,
+        "sources": sources,
+        "overrides": overrides,
+        "provenance": {
+            "profile": profile["name"],
+            "implementer": implementer,
+            "implementer_source": implementer_source,
+            "same_family": same_family,
+            "same_family_acknowledged": acknowledged if same_family else None,
+        },
+        "login_root": login_root(cfg, reviewer) if selected["provider"] == "claude-code" else None,
+        "reviewer_family": reviewer_family,
+    }
 
 
 def use_profile(repo, name, allow_same_family=False, reason=None):
@@ -335,14 +608,25 @@ def pinned_executor(executor):
 
 
 def show(repo, cfg=None):
+    cfg = configuration(repo.root) if cfg is None else cfg
     profile = active_profile(repo, cfg)
     local = local_selection(repo)
-    return {
+    declared = load_profiles(cfg)
+    result = {
         **profile,
         "local_file": str(local_path(repo)) if local else None,
         "local_selection": local,
+        "config_schema": declared["config_schema"],
+        "shimmed": declared["shimmed"],
+        "hosted_profile": declared["hosted_profile"],
         "tools": {tool: shutil.which(tool) for tool in ("codex", "claude", "copilot")},
     }
+    try:
+        selection = review_selection(repo, cfg, warn_same_family=False)
+        result["review_policy"] = review_policy.status(repo, cfg, selection)
+    except WorkflowError as exc:
+        result["review_policy"] = {"error": str(exc)}
+    return result
 
 
 def listing(repo, cfg=None):
@@ -354,12 +638,19 @@ def listing(repo, cfg=None):
         active, error = None, str(exc)
     return {
         "default_profile": declared["default_profile"],
+        "hosted_profile": declared["hosted_profile"],
+        "config_schema": declared["config_schema"],
+        "shimmed": declared["shimmed"],
         "active": active,
         "active_error": error,
         "profiles": {
             name: {
                 "implementer": {"backend": p["implementer"]["backend"], "model": p["implementer"]["model"]},
-                "reviewer": {"backend": "copilot", "model": p["reviewer"]["model"]},
+                "reviewer": {
+                    "backend": p["reviewer"]["backend"],
+                    "model": p["reviewer"]["model"],
+                    "effort": p["reviewer"]["effort"],
+                },
                 "same_family": p["same_family"],
             }
             for name, p in declared["profiles"].items()

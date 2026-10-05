@@ -1,10 +1,28 @@
 {
-  "schema_version": 2,
-  "default_profile": "astra-claude",
+  "schema_version": 3,
+  "default_profile": "astra-copilot",
+  "hosted_profile": "astra-copilot",
   "profiles": {
     "astra-claude": {
       "implementer": {"backend": "codex", "model": "gpt-6-astra"},
-      "reviewer": {"backend": "copilot", "model": "claude-opus-5"}
+      "reviewer": {
+        "backend": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "medium",
+        "max_estimated_usd": 10,
+        "timeout_seconds": 900,
+        "login_root": null
+      }
+    },
+    "astra-copilot": {
+      "implementer": {"backend": "codex", "model": "gpt-6-astra"},
+      "reviewer": {
+        "backend": "copilot",
+        "model": "claude-opus-5",
+        "effort": "default",
+        "max_ai_credits": 400,
+        "timeout_seconds": 900
+      }
     },
     "fable-gpt": {
       "implementer": {
@@ -17,11 +35,16 @@
         "sandbox": null,
         "max_budget_usd": null
       },
-      "reviewer": {"backend": "copilot", "model": "gpt-6-astra"}
+      "reviewer": {"backend": "copilot", "model": "gpt-6-astra", "effort": "default"}
     }
   },
   "review_timeout_seconds": 900,
   "review_max_ai_credits": 400,
+  "review_max_estimated_usd": 10,
+  "review_model_extensions": [],
+  "claude_review_login_root": null,
+  "private_paths": [],
+  "managed_max_prompt_bytes": 300000,
   "max_diff_bytes": 300000,
   "max_source_file_bytes": 250000,
   "max_snapshot_bytes": 12000000,

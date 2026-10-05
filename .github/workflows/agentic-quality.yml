@@ -2,6 +2,7 @@ name: agentic workflow tests
 on:
   pull_request:
   push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,7 +12,7 @@ concurrency:
 jobs:
   agentic-quality:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -19,8 +20,27 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - run: python -B scripts/agentic/check.py
-      - name: Verify repository cleanliness
-        run: |
-          git diff --check
-          python -c 'import subprocess; s=subprocess.check_output(["git","status","--porcelain"], text=True); print(s, end=""); raise SystemExit(bool(s))'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - id: tests
+        run: python -B scripts/agentic/check.py
+      - id: clean
+        if: always()
+        run: make check-clean PYTHON=python
+      - name: Record exact hosted checkout and outcomes
+        if: always()
+        env:
+          REVIEW_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REVIEW_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
+        run: python scripts/agentic/ci_evidence.py --check agentic-quality --command "python -B scripts/agentic/check.py" --test-status "$TEST_OUTCOME" --clean-status "$CLEAN_OUTCOME" --output "$RUNNER_TEMP/validation/receipt.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: validation-agentic-quality-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validation/receipt.json
+          if-no-files-found: error
+          retention-days: 7

@@ -92,15 +92,45 @@ Those need the first live PR described below.
 
 ## Profiles and Claude Code containment
 
-`.agentic/config.json` (schema 2) declares named profiles; `default_profile` applies unless
+`.agentic/config.json` (schema 3) declares named profiles; `default_profile` applies unless
 overridden. Precedence: `AGENTIC_PROFILE` in the environment, then the ignored
 checkout-local `.agentic-local/profile.json`, then the repository default. Unknown names
 fail closed; nothing falls back silently.
 
-| Profile | Implementer | Backend | Reviewer (Copilot CLI) | Default |
+| Profile | Implementer | Backend | Reviewer | Default |
 | --- | --- | --- | --- | --- |
-| `astra-claude` | `gpt-6-astra` | Codex CLI (`codex exec --json`, `exec resume UUID`) | `claude-opus-5` | yes |
-| `fable-gpt` | `claude-fable-5-1` | Claude Code (`claude -p`, `--resume UUID`) on your Claude subscription | `gpt-6-astra` | no |
+| `astra-copilot` | `gpt-6-astra` | Codex CLI (`codex exec --json`, `exec resume UUID`) | Copilot CLI `claude-opus-5`, effort `default` | yes; also `hosted_profile` |
+| `astra-claude` | `gpt-6-astra` | Codex CLI | Claude Code native `claude-opus-5-5`, effort `medium`, included Max billing only | no |
+| `fable-gpt` | `claude-fable-5-1` | Claude Code (`claude -p`, `--resume UUID`) on your Claude subscription | Copilot CLI `gpt-6-astra` | no |
+
+A reviewer object names `backend` (`copilot` or `claude-code`), an exact `model` from the
+closed catalog in `scripts/agentic/review_policy.py` (provider spellings differ:
+Claude Code `claude-opus-5-5`, Copilot `claude-opus-5.5`; aliases and `auto` are refused)
+and an `effort` the catalog allows. Copilot reviewers may set `max_ai_credits`; Claude Code
+reviewers may set `max_estimated_usd` (at most 10) and `login_root`. Both may set
+`timeout_seconds` (at most 900). CLI pins, adapters and billing modes are fixed in code,
+never in configuration; an optional `cli_version` or `adapter` key fails closed if the
+template's pin moves. The resolved selection is an immutable review policy recorded in
+every packet (`metadata.json` → `review_policy`); `profile show` prints it with the
+activation blockers that still stand (for example `verified_pinned_cli_unavailable` until
+`register-reviewer` runs, or `claude_reviewer_adapter_not_installed` until the native
+adapter ships). Other top-level keys: `hosted_profile` (the Copilot-backed profile the
+manual Actions workflow uses when its `profile` input is empty), `private_paths`
+(repository-relative prefixes excluded from review packets), `managed_max_prompt_bytes`
+(executor prompt budget, separate from the nullable `max_diff_bytes` review cap),
+`review_max_estimated_usd`, `review_model_extensions` and `claude_review_login_root`.
+Schema 1 and both schema 2 dialects (this template's profiles, FLOW-DC's `openai_model`
+plus `review_*`) still load through shims that print the schema 3 equivalent.
+
+```bash
+python3 scripts/agentic/install_tool.py copilot --directory /tmp/copilot-pinned
+python3 scripts/agentic/workflow.py register-reviewer copilot \
+  --binary /tmp/copilot-pinned/copilot --proof-directory /tmp/copilot-pinned
+```
+
+`register-reviewer` verifies the binary against the pinned release archive digest and
+copies it into the private `.agentic-local/provider-clis/<provider>/<version>/` bundle;
+every review re-verifies that bundle before running it.
 
 ```bash
 python3 scripts/agentic/workflow.py profile show
@@ -341,8 +371,10 @@ The installer includes `.agents/skills` with all eight entrypoints, their metada
 generated `.claude/skills` mirror, and the supporting helpers and guides. After adoption,
 launch Codex (`$agentic-workflow`) or Claude Code (`/agentic-workflow`) in the project and
 verify that all eight skills appear; restart the session if discovery has not refreshed.
-For adopters such as FLOW-DC: keep the `profiles` block in `.agentic/config.json` (a
-schema 1 configuration loads as the `legacy` profile), run `make sync-skills` after any
+For adopters such as FLOW-DC: move to schema 3 profiles in `.agentic/config.json` (a
+schema 1 configuration loads as the `legacy` profile and FLOW-DC's schema 2 as
+`legacy-copilot`/`legacy-claude-code` until then), set `private_paths` for data trees,
+keep `required_checks` equal to your CI job names, run `make sync-skills` after any
 skill edit, keep `.claude/settings.local.json` ignored, do not add a `CLAUDE.md`, and run
 one Copilot probe per reviewer model before the first review. Preserve any existing project skills when
 reconciling conflicts. Read [SKILLS.md](SKILLS.md) for invocation and managed session
