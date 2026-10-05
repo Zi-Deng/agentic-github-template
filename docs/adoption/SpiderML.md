@@ -10,6 +10,10 @@ and `huggingFaceDistillation.py`; evaluation and plotting live beside them in
 `scripts/`. The project has both `pixi.toml`/`pixi.lock` and `environment.yml`. The local
 CLAUDE.md references some historical paths and commands absent from the tracked file
 set, so it should be reconciled against the actual project before becoming shared policy.
+That `CLAUDE.md` is untracked and ignored, but any `CLAUDE.md` at or above the working
+directory stops Claude Code from reading `AGENTS.md`. After installing `AGENTS.md`, add
+`@AGENTS.md` as the first line of that local `CLAUDE.md`, and add
+`/.claude/settings.local.json` to the project's ignore rules.
 
 ## Recommended sequence
 
@@ -26,8 +30,9 @@ set, so it should be reconciled against the actual project before becoming share
    not appropriate CI validation commands. Do not silently replace the environment
    management approach with NICME's shared micromamba environment.
 5. Write AGENTS.md from the current tracked architecture. Document external dataset
-   loading, model loading, upload/logging effects and output paths. Set Astra for all
-   non-review roles and the independent Copilot reviewer from this template.
+   loading, model loading, upload/logging effects and output paths. Select a
+   profile with `workflow.py profile use` and keep the independent Copilot reviewer from
+   this template.
 6. Build a real offline CPU test baseline before making project CI required. Existing
    training and evaluation scripts load models/datasets; do not run their normal main
    functions as a smoke test. Extract testable pure helpers where justified by a small
@@ -41,8 +46,8 @@ set, so it should be reconciled against the actual project before becoming share
 
 ## Use the skills after adoption
 
-Install the eight `.agents/skills` directories with the matching helpers and operating
-documents. Verify discovery in the actual Codex host and retain any existing project
+Install the eight `.agents/skills` directories, the generated `.claude/skills` mirror,
+and the matching helpers and operating documents. Verify discovery in the actual Codex host and retain any existing project
 skills. Each new project starts with its own private task records; never transfer an
 executor UUID or `.agentic-local` directory from the template or NICME.
 
@@ -52,9 +57,10 @@ PR belong to `zkdeng-uofa/SpiderML`. Approve the plan before implementation. The
 registered sibling worktree must use the selected SpiderML environment and offline
 CPU checks; skill invocation does not authorize training, downloads or publication.
 
-The dedicated Astra session handles implementation and subsequent repairs using the
-same saved UUID. `$agentic-review PR #P` obtains a new Opus snapshot review, and
-`$agentic-repair PR #P` reads both review and inline comments before resuming Astra.
+The pinned implementer session handles implementation and subsequent repairs using the
+same saved UUID. `$agentic-review PR #P` obtains a new snapshot review by the profile's
+reviewer, and `$agentic-repair PR #P` reads both review and inline comments before
+resuming that session.
 Include split/label-map/processor/checkpoint evidence relevant to the actual change.
 
 Use `$agentic-finish PR #P` to assess readiness and obtain the human-run command.

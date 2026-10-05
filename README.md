@@ -12,23 +12,32 @@ corrections for safe cleanup, review isolation, and commit identity.
 flowchart LR
   I[Issue and acceptance criteria] --> P[Approved plan]
   P --> W[Issue branch and sibling worktree]
-  W --> D[Astra implementation and draft PR]
+  W --> D[Implementer session and draft PR]
   D --> C[Deterministic CI]
-  C --> R[Fresh Claude review through Copilot]
+  C --> R[Fresh independent review through Copilot CLI]
   R --> F{Material findings?}
-  F -->|Yes| A[Astra repair on the same PR]
+  F -->|Yes| A[Same implementer session repairs the PR]
   A --> C
   F -->|Resolved| H[Prepare human merge command]
   H --> M[Human runs pinned merge]
   M --> X[Archive artifacts and verify cleanup]
 ```
 
-**Model policy:** `gpt-6-astra` for drafting, planning, implementation and repair.
-The independent reviewer uses an explicit Claude model through Copilot CLI;
-`claude-opus-5` is the configured reviewer, with a 400-AI-credit limit and a
-15-minute timeout per review. One attempted round is the default; further review needs
-a supported critical P0/P1 finding or an explicit user request. There is no automatic
-model fallback. Verify account availability with the [Opus setup guidance](docs/agent-workflow/REVIEW.md#claude-opus-5-access).
+**Model policy:** two switchable profiles, declared in `.agentic/config.json`:
+
+| Profile | Implementer (draft, plan, implement, repair) | Independent reviewer (Copilot CLI) | Default |
+| --- | --- | --- | --- |
+| `astra-claude` | Codex CLI, `gpt-6-astra`, ChatGPT account | `claude-opus-5` | yes |
+| `fable-gpt` | Claude Code, `claude-fable-5-1`, Claude subscription | `gpt-6-astra` | no |
+
+`python3 scripts/agentic/workflow.py profile use fable-gpt` switches this checkout through
+an ignored local file; `AGENTIC_PROFILE=fable-gpt` overrides one command; `profile show`
+prints the resolved profile. A task keeps the profile recorded at its first managed launch.
+Both reviewers keep the 400-AI-credit limit and 15-minute timeout per review. One attempted
+round is the default; further review needs a supported critical P0/P1 finding or an explicit
+user request. There is no automatic model fallback. Verify account entitlement per profile
+with the [Opus](docs/agent-workflow/REVIEW.md#claude-opus-5-access) and
+[GPT-6 Astra](docs/agent-workflow/REVIEW.md#gpt-6-astra-access) access guidance.
 
 ## Start here
 
@@ -54,7 +63,8 @@ make check
 python3 scripts/agentic/workflow.py doctor
 ```
 
-Runtime: Linux/macOS, Python 3.12+, Git, GNU Make, `gh`, `codex`, and `copilot`. The portable
+Runtime: Linux/macOS, Python 3.12+, Git, GNU Make, `gh`, `copilot`, and `codex` or `claude`
+as the active profile requires. The portable
 workflow test suite uses only the Python standard library and Git. CI needs no model
 credentials. Windows users should use WSL; local operation locks use POSIX `flock`.
 
@@ -65,22 +75,28 @@ installer excludes the example and its repository-only Node.js CI setup.
 
 ## Invoke the workflow
 
-Start Codex in this checkout and use:
+Start Codex (`$agentic-workflow …`) or Claude Code (`/agentic-workflow …`) in a clean
+control checkout and describe the task:
 
 ```text
 $agentic-workflow Describe the task to implement
 ```
 
-The coordinator publishes an issue and proposed plan, waits for your plan approval,
-then starts a dedicated Astra executor in the sibling worktree. Repairs resume that
-executor; every Opus review starts fresh. Use `$agentic-review PR #456` or
-`$agentic-repair PR #456` for a single phase. The [skill guide](docs/agent-workflow/SKILLS.md)
-lists all eight entrypoints and recovery behavior. `$agentic-finish` prepares the
-script that you run to merge, archive ignored artifacts, and clean up verified branches.
+The host you type into coordinates; the active profile decides which implementer backend
+the managed launcher starts. The coordinator publishes an issue and proposed plan, waits
+for your plan approval, then starts the pinned implementer session in the sibling worktree.
+Repairs resume that session; every independent review starts fresh. Use
+`$agentic-review PR #456` or `$agentic-repair PR #456` (`/agentic-…` in Claude Code) for a
+single phase. The [skill guide](docs/agent-workflow/SKILLS.md) lists all eight entrypoints
+and recovery behavior. `$agentic-finish` prepares the script that you run to merge, archive
+ignored artifacts, and clean up verified branches.
 
 ## What is included
 
-- Eight repository skills, approved-contract records and a resumable Astra executor.
+- Eight repository skills (mirrored for Claude Code), approved-contract records and a
+  resumable implementer session pinned per task.
+- Two switchable implementer/reviewer profiles, restricted-by-default Claude containment,
+  and a reviewer model frozen per review round.
 - A human-run finish script with recoverable artifact archival and guarded branch cleanup.
 - Required issue fields and a PR template separating software evidence from domain evidence.
 - Sibling task worktrees, existing-branch recovery, draft PR creation and merge preflight.

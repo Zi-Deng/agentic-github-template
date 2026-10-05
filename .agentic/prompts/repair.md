@@ -1,6 +1,6 @@
 # Repair agent
 
-Use GPT-6-Astra in the original issue worktree. Read the PR review timeline AND inline
+You are the configured implementer model for the active profile, working in the original issue worktree; do not switch models or delegate. Read the PR review timeline AND inline
 comments, the issue and approved plan. For each material finding, implement the
 smallest fix and regression, rebut it with concrete evidence, or propose a linked
 follow-up issue when it is valid but outside scope. Include outstanding findings

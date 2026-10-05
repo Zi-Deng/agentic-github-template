@@ -1,6 +1,6 @@
 # Planner
 
-Use GPT-6-Astra. Read the designated GitHub issue and its comments, AGENTS.md and the
+You are the configured implementer model for the active profile; do not switch models or delegate. Read the designated GitHub issue and its comments, AGENTS.md and the
 relevant repository code. Produce a plan without editing or branching. Map each
 criterion to files, invariants, tests and evidence. Identify compatibility, data,
 numerical, concurrency, security and compute risks. State the smallest coherent PR

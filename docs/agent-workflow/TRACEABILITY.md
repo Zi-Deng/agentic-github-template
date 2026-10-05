@@ -10,7 +10,7 @@ the template and identifies deliberate adaptations.
 | 1. Overview and minimum checklist | README diagram; operating guide; helper commands | Local tests cover mechanical transitions; live GitHub stages are recorded separately |
 | 2. Issue contract, PR state and small changes | Required issue form; evidence-based PR template; early draft helper | Human reviews acceptance and scope; no claim of automatic semantic enforcement |
 | 2.3. Worktree isolation | `new_task`, POSIX operation lock, sibling paths | Real Git tests with spaces, reused branches, duplicate paths and non-main default branch |
-| 3. Provider-neutral interface | Python/Git/gh core plus separate Codex and Copilot adapters | Basic GitHub flow remains usable without models |
+| 3. Provider-neutral interface | Python/Git/gh core plus Codex, Claude Code and Copilot adapters selected by profile | Basic GitHub flow remains usable without models |
 | 3.3. Shared instructions | Root AGENTS.md, short Copilot instructions and reusable role prompts | Project-specific policy is adapted during installation |
 | 3.4. 2026 tooling | Research record and verified CLI/action versions | Preview features and stale guide dates are not baseline dependencies |
 | 3.5. Manual-first adoption | Local review baseline; optional manual Actions path | No autonomous issue triage or repair trigger |
@@ -20,7 +20,7 @@ the template and identifies deliberate adaptations.
 | 4.5. Issue/PR templates | `.github/ISSUE_TEMPLATE/change.yml`; PR template | Required criteria, commands, risk and rollback fields |
 | 4.6. CODEOWNERS | Setup instructions for active eligible reviewers | No fictional team or unsatisfiable solo owner approval |
 | 5. Risk and plan design | T0–T4 table; role prompts; plan comment ID | Plan association checked mechanically; approval interpretation remains human |
-| 6.1–6.5. Golden path to checks | Capture/plan/prepare/implement skills, approved-contract state, managed Astra launch, draft PR helper and CI | Exact executor UUID and task binding; approval before coding; early draft PR and documented evidence |
+| 6.1–6.5. Golden path to checks | Capture/plan/prepare/implement skills, approved-contract state, managed implementer launch (Codex or Claude Code by profile), draft PR helper and CI | Exact executor UUID and task binding; approval before coding; early draft PR and documented evidence |
 | 6.6. Independent review | Snapshot preparer, Copilot custom agent, read/search tool allowlist | Fresh process/config; no implementation history or PR hook execution |
 | 6.7. Repair protocol | Repair skill, exact-session resume and public disposition procedure | Reviews and inline comments collected; user-selected one attempted round by default, with documented critical P0/P1 or explicit continuation; changed head/base requires fresh review |
 | 6.8. Merge and cleanup | Finish skill, human-run script, journaled archival and guarded cleanup | Verified merge, matching tips and preserved ignored artifacts; remote deletion uses explicit SHA lease |
@@ -29,7 +29,7 @@ the template and identifies deliberate adaptations.
 | 8.3–8.4. Provenance and large artifacts | Hash/timing/exit-status manifest; artifact policy | Artifact freshness and scientific design still require inspection |
 | 9. Validation tiers | V0–V4 ladder; CI; project CPU rollout plans | No GPU or costly campaign automatically triggered by PRs |
 | 10. Security/governance | Read-only CI tokens; pinned actions; protected manual environments | No PR code execution in model job; tool controls are not an OS sandbox |
-| 11. Cost/context/WIP | Explicit model policy and bounded review; daily checklist | All-Astra start follows user choice; cheaper helpers only after deliberate policy change |
+| 11. Cost/context/WIP | Explicit profile policy (default `astra-claude`, selectable `fable-gpt`) and bounded review; daily checklist | Cheaper or same-family pairings only after a deliberate policy change |
 | 12. Failure modes | Negative regression tests; recovery guidance | Preserves dirty worktrees, ignored outputs and post-merge commits |
 | 13. Daily checklist | Operating guide daily rhythm | Durable artifacts rather than dependence on a private chat |
 | Appendix A | Required issue form | Retains all contract dimensions and adds budget/stop conditions |
@@ -78,3 +78,10 @@ the template and identifies deliberate adaptations.
     orchestration and each requested phase. Managed repair resumes the original
     executor UUID; each independent reviewer still starts fresh. A local approval
     receipt binds the designated issue/plan but cannot authenticate a human decision.
+12. **Make the model pairing a declared profile, and mirror skills for Claude Code.**
+    Profiles in `.agentic/config.json` select the implementer backend (Codex or Claude
+    Code) and the Copilot reviewer; each task pins its backend and each review round
+    freezes its reviewer, so switching never rewrites history. Claude Code discovers only
+    `.claude/skills/`, so byte-identical copies are generated and checked; `CLAUDE.md`,
+    `.claude/settings.json` and `.mcp.json` are refused because they would suppress
+    `AGENTS.md` or execute hooks inside a headless executor.

@@ -14,15 +14,21 @@ give that chat filesystem access or GitHub credentials. Codex reads checked-in s
 from `.agents/skills`, including when launched inside a task worktree. If newly added
 skills do not appear, restart the session. See [OpenAI's skills documentation](https://learn.chatgpt.com/docs/build-skills).
 
+In Claude Code, type `/agentic-<phase>`. Claude Code discovers only `.claude/skills/`,
+into which `make sync-skills` copies each `SKILL.md` byte for byte from `.agents/skills`
+(the Codex-only `agents/openai.yaml` metadata is not mirrored); drift fails `make check`. An interactive Claude Code session prints `no CLAUDE.md found; AGENTS.md
+loaded: …` at start, confirming that the shared instructions are in effect. See
+[Claude Code's skills documentation](https://code.claude.com/docs/en/skills).
+
 | What you want | Example request | Durable result |
 | --- | --- | --- |
 | Complete a task | `$agentic-workflow Add validation for the export configuration` | Issue, approved plan, worktree, draft PR, evidence, review/repair, human merge handoff |
 | Capture a problem | `$agentic-capture Draft and publish an issue for the export failure` | GitHub issue URL and measurable acceptance criteria |
 | Plan an existing issue | `$agentic-plan Issue #123` | Proposed plan comment, then recorded human approval |
 | Prepare the workspace | `$agentic-prepare Issue #123` | Registered sibling worktree and branch |
-| Implement an approved task | `$agentic-implement Issue #123` | Dedicated Astra executor, coherent commits, checks and draft PR |
-| Review the current PR | `$agentic-review PR #456` | Fresh Opus COMMENT review bound to the current head/base |
-| Address review findings | `$agentic-repair PR #456` | Same Astra session, repairs and public dispositions |
+| Implement an approved task | `$agentic-implement Issue #123` | Pinned implementer session, coherent commits, checks and draft PR |
+| Review the current PR | `$agentic-review PR #456` | Fresh independent COMMENT review bound to the current head/base |
+| Address review findings | `$agentic-repair PR #456` | Same implementer session, repairs and public dispositions |
 | Prepare to merge | `$agentic-finish PR #456` | Evidence assessment and exact human-run finishing command |
 
 The numbers are examples. Supply an issue/PR URL when repository identity could be
@@ -40,11 +46,11 @@ flowchart TD
   A -->|No| Q[Resolve decisions and obtain approval]
   Q --> A
   A -->|Yes| W[Prepare sibling worktree]
-  W --> I[Start dedicated Astra executor]
+  W --> I[Start pinned implementer session]
   I --> D[Commit, publish draft PR and check evidence]
-  D --> R[Fresh isolated Opus review]
+  D --> R[Fresh isolated independent review]
   R --> F{Supported material findings?}
-  F -->|Yes| X[Resume original Astra UUID and publish dispositions]
+  F -->|Yes| X[Resume original session UUID and publish dispositions]
   X --> D
   F -->|Addressed and evidence sufficient| H[Prepare human merge command]
   H --> M[Human runs finish script]
@@ -69,7 +75,7 @@ before another write.
 
 The **control checkout** is a clean checkout of the actual default branch. It owns
 public GitHub operations, task records and trusted review policy. The **task worktree**
-is a sibling checkout of the issue branch. The dedicated Astra executor starts there
+is a sibling checkout of the issue branch. The pinned implementer session starts there
 and performs implementation and repair. A linked worktree shares Git objects and
 configuration; it is not a separate repository, account or resource sandbox.
 
@@ -80,15 +86,30 @@ worktree. When main contains unrelated files or edits, preserve them; establish 
 separate clean control checkout and report its location instead of changing those
 files to satisfy a guard.
 
-Astra remains the configured non-review model, `gpt-6-astra`. Skill metadata does not
-change the active model of an arbitrary host conversation; use Astra for coordination
-and the explicit managed launcher for implementation. Cheaper-model changes require
-a separate deliberate policy decision.
+### Profiles
 
-The managed launcher and review coordinator explicitly enforce the selected Astra/Opus
-policy. A deliberate model change must update those policy guards and their validation
-along with configuration and role guidance; editing a model ID alone is insufficient
-for the managed path.
+`.agentic/config.json` declares the profiles; the active one is resolved as
+`AGENTIC_PROFILE`, then the ignored `.agentic-local/profile.json` written by
+`workflow.py profile use NAME`, then `default_profile`.
+
+| Profile | Implementer | Reviewer (Copilot CLI) | Default |
+| --- | --- | --- | --- |
+| `astra-claude` | Codex `gpt-6-astra` | `claude-opus-5` | yes |
+| `fable-gpt` | Claude Code `claude-fable-5-1` | `gpt-6-astra` | no |
+
+Skill metadata does not change the active model of an arbitrary host conversation; the
+host you type into coordinates, and the managed launcher starts the active profile's
+implementer. The task record pins backend, model and profile at the first managed launch,
+and a later launch or repair under another profile is refused until you switch back or
+finish the task. Each review round freezes its reviewer model, so switching profiles
+afterwards never invalidates a published designated review. Same-family pairs are refused
+unless recorded with `--allow-same-family`, and every helper warns while such a profile is
+active. Cheaper-model changes remain a separate deliberate policy decision.
+
+The managed launcher and review coordinator enforce the selected profile's backend and
+models. A deliberate model change updates the profile, its validation and the role
+guidance together; the model regexes refuse aliases such as `opus` or `auto` because they
+would float.
 
 The managed executor implements the approved scope, runs checks, prepares commits and
 returns publication text. The coordinator checks actual Git state and performs GitHub
@@ -104,10 +125,12 @@ permissions. Do not claim that the environment marker isolates credentials or ma
 a malicious executor harmless. This is distinct from the independent reviewer's
 restricted model-tool surface.
 
-The Opus reviewer is a new Copilot process with a fresh snapshot and state directory
-for every round. Its selected model is `claude-opus-5`; its available tools are only
-`view`, `grep` and `glob`. It sees the public contract, source/diff, checks and rubric.
-It receives neither the Astra conversation nor private task memory. Read
+The independent reviewer is a new Copilot process with a fresh snapshot and state
+directory for every round. Its model is the active profile's reviewer (`claude-opus-5`
+under `astra-claude`, `gpt-6-astra` under `fable-gpt`), frozen into the round record and
+packet metadata; its available tools are only `view`, `grep` and `glob`. It sees the
+public contract, source/diff, checks and rubric. It receives neither the implementer
+conversation nor private task memory. Read
 [REVIEW.md](REVIEW.md) for the exact isolation boundary and evidence limitations.
 
 ## Commands behind capture, planning and preparation
@@ -147,7 +170,8 @@ the approved contract.
 After preparation, use these commands from the control checkout:
 
 ```bash
-# Preview the working directory, model and exact command, then execute it.
+# Confirm the active profile, preview the working directory, model and exact command, then execute it.
+python3 scripts/agentic/workflow.py profile show
 python3 scripts/agentic/workflow.py launch implement 123 --managed
 python3 scripts/agentic/workflow.py launch implement 123 --managed --execute
 
@@ -191,7 +215,9 @@ invocations, because they can consume credits.
 First inspect `task-status`, the worktree, and the private execution records. If the
 saved task UUID is present and the preceding process has stopped, another managed
 launch resumes it. If the UUID was not captured, recover the original identity from
-an actual saved Codex JSONL record:
+an actual saved Codex JSONL record or Claude Code transcript
+(`~/.claude/projects/<slug>/<session-id>.jsonl`; add `--backend claude` when the task
+has no pin yet):
 
 ```bash
 python3 scripts/agentic/workflow.py recover-executor 123 \
@@ -209,11 +235,15 @@ using `approve-plan ... --supersede`. Superseding approval preserves the executo
 approval history and invalidates prior readiness. It is an explicit reconciliation
 step, not a way to approve a change merely because public text requests it.
 
-A managed implementation run uses persistent `codex exec --json` execution and saves
-the UUID emitted by `thread.started`. Repair calls `codex exec resume` with that
-explicit UUID. A newer unrelated Codex session must not affect the choice. No managed
-implementation or repair uses `--last`, `--ephemeral` or a silent replacement session.
-See [OpenAI's execution and resume interfaces](https://learn.chatgpt.com/docs/non-interactive-mode).
+Under `astra-claude`, a managed implementation run uses persistent `codex exec --json`
+execution and saves the UUID emitted by `thread.started`. Repair calls `codex exec resume`
+with that explicit UUID. Under `fable-gpt`, the coordinator pre-assigns the UUID
+(`claude -p --verbose --output-format stream-json --json-schema … --session-id UUID`)
+and saves it only when the `system/init` event confirms it; repair uses `--resume UUID`.
+A newer unrelated session must not affect the choice. No managed implementation or
+repair uses `--last`, `--ephemeral`, `--continue`, `--bare`, `--fallback-model` or a
+silent replacement session. See [OpenAI's execution and resume interfaces](https://learn.chatgpt.com/docs/non-interactive-mode)
+and [Claude Code's headless mode](https://code.claude.com/docs/en/headless).
 
 The record binds the UUID to the repository, issue, approved plan, branch and worktree.
 It is private continuity data, not proof of human approval. Codex retains the session's
@@ -272,13 +302,13 @@ software check. [FINISH.md](FINISH.md) describes the final handoff and archival 
 
 ## Private state and portability
 
-Task state, operation keys, execution records, review packets and archives live below
-the control checkout's ignored `.agentic-local`. Keep `/memory/` and `/.agentic-local/`
+Task state, operation keys, execution records, review packets, archives and the local
+profile selection live below the control checkout's ignored `.agentic-local`. Keep `/memory/` and `/.agentic-local/`
 ignored in every adopted repository. Do not commit credentials, session transcripts,
 datasets or generated model artifacts. Independent review excludes this state.
 
-The installer includes the eight skills, their metadata and the runtime/operating
-files they depend on. It does not install them globally or change another project's
+The installer includes the eight skills, their metadata, the generated `.claude/skills`
+mirror and the runtime/operating files they depend on. It does not install them globally or change another project's
 model accounts, repository permissions, check names or domain policy. Preserve existing
 project instructions and use [SETUP.md](SETUP.md#existing-projects) to reconcile file
 conflicts. For project-specific rollout, read [NICME](../adoption/NICME.md) or

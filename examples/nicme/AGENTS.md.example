@@ -5,8 +5,8 @@ Reconcile this draft with the current project before installing it as AGENTS.md.
 ## Contract
 
 - The issue and approved plan define scope. Use one sibling worktree per issue.
-- Use GPT-6-Astra for drafting, planning, implementation and repair. Review with a
-  fresh Claude session through Copilot CLI. Only a human merges.
+- Use the active profile's implementer for drafting, planning, implementation and repair,
+  and its Copilot reviewer for a fresh independent review. Only a human merges.
 - Preserve active research and existing user changes. Do not revise metrics, loss
   formulas, splits, selection rules or published outputs outside the approved issue.
 - T4 paths include workflow configuration, credentials, campaign launchers, releases

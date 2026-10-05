@@ -170,8 +170,8 @@ class Repo:
 
 def configuration(root):
     result = json.loads((Path(root) / ".agentic/config.json").read_text())
-    if result.get("schema_version") != 1:
-        raise WorkflowError("Unsupported .agentic/config.json schema")
+    if result.get("schema_version") not in {1, 2}:
+        raise WorkflowError("Unsupported .agentic/config.json schema (expected 1 or 2)")
     return result
 
 
@@ -409,16 +409,31 @@ def merge_preflight(repo, number, reviewed_sha):
     }
 
 
-def launch(repo, role, task, execute=False, managed=False):
+def claude_logged_in():
+    result = run(["claude", "auth", "status"], check=False)
+    if result.returncode:
+        return False
+    try:
+        return json.loads(result.stdout).get("loggedIn") is True
+    except (ValueError, AttributeError):
+        return False
+
+
+def launch(repo, role, task, execute=False, managed=False, containment="restricted", containment_reason=None):
     if os.environ.get("AGENTIC_EXECUTOR_ROLE"):
         raise WorkflowError("An already-running executor must not launch another executor")
     if managed:
         from sessions import managed_launch
 
-        return managed_launch(repo, role, task, execute=execute)
-    cfg = configuration(repo.root)
-    if not re.fullmatch(r"gpt-[a-zA-Z0-9.-]+", cfg["openai_model"]):
-        raise WorkflowError("Non-review roles must use an explicitly configured OpenAI GPT model")
+        return managed_launch(
+            repo, role, task, execute=execute, containment=containment, containment_reason=containment_reason
+        )
+    from profiles import active_profile
+
+    if containment != "restricted":
+        raise WorkflowError("Containment options apply to managed execution only")
+    profile = active_profile(repo, configuration(repo.root))
+    implementer = profile["implementer"]
     if role in {"implement", "repair"}:
         if repo.root == repo.main or not re.fullmatch(
             r"issue-[1-9][0-9]*-[a-z0-9-]+", repo.git("branch", "--show-current")
@@ -426,31 +441,53 @@ def launch(repo, role, task, execute=False, managed=False):
             raise WorkflowError("Implementation and repair require an issue task worktree")
     prompt = (repo.root / f".agentic/prompts/{role}.md").read_text()
     prompt += f"\nTask identifier: {task}\nRepository: {repo.root}\n"
-    args = [
-        "codex",
-        "--model",
-        cfg["openai_model"],
-        "--sandbox",
-        "workspace-write" if role in {"implement", "repair"} else "read-only",
-        "--ask-for-approval",
-        "on-request",
-        "--cd",
-        str(repo.root),
-        prompt,
-    ]
+    if implementer["backend"] == "codex":
+        args = [
+            "codex",
+            "--model",
+            implementer["model"],
+            "--sandbox",
+            "workspace-write" if role in {"implement", "repair"} else "read-only",
+            "--ask-for-approval",
+            "on-request",
+            "--cd",
+            str(repo.root),
+            prompt,
+        ]
+    else:
+        # Interactive Claude Code session; plan mode is read-only for drafting and planning.
+        args = [
+            "claude",
+            "--model",
+            implementer["model"],
+            "--permission-mode",
+            "acceptEdits" if role in {"implement", "repair"} else "plan",
+            prompt,
+        ]
     if execute:
-        return subprocess.call(args)
-    return {"command": shlex.join(args), "model": cfg["openai_model"]}
+        return subprocess.call(args, cwd=repo.root)
+    return {
+        "command": shlex.join(args),
+        "cwd": str(repo.root),
+        "model": implementer["model"],
+        "backend": implementer["backend"],
+        "profile": profile["name"],
+    }
 
 
 def main():
+    from profiles import add_commands as add_profile_commands
+    from profiles import dispatch as dispatch_profile
     from tasks import COMMANDS, add_commands, dispatch
 
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     add_commands(sub)
+    add_profile_commands(sub)
     sub.add_parser("doctor")
     sub.add_parser("memory-init")
+    mirror = sub.add_parser("sync-skills")
+    mirror.add_argument("--check", action="store_true")
     new = sub.add_parser("new-task")
     new.add_argument("issue")
     new.add_argument("slug")
@@ -470,23 +507,54 @@ def main():
     agent.add_argument("task")
     agent.add_argument("--execute", action="store_true")
     agent.add_argument("--managed", action="store_true")
+    agent.add_argument("--containment", choices=["restricted", "bypass"], default="restricted")
+    agent.add_argument("--containment-reason")
     args = parser.parse_args()
     try:
         repo = Repo()
         if args.command == "doctor":
+            from profiles import listing
+
+            tools = {tool: shutil.which(tool) for tool in ["git", "gh", "codex", "claude", "copilot"]}
+            auth = {
+                "gh": run(["gh", "auth", "status"], check=False).returncode == 0 if tools["gh"] else None,
+                "codex": run(["codex", "login", "status"], check=False).returncode == 0
+                if tools["codex"]
+                else None,
+                "claude": claude_logged_in() if tools["claude"] else None,
+            }
+            profiles_view = listing(repo)
+            active = profiles_view["active"]
+            backend = profiles_view["profiles"][active]["implementer"]["backend"] if active else None
             result = {
                 "root": str(repo.root),
                 "main": str(repo.main),
-                "tools": {tool: shutil.which(tool) for tool in ["git", "gh", "codex", "copilot"]},
+                "tools": tools,
+                "auth": auth,
                 "git_clean": not bool(repo.git("status", "--porcelain")),
-                "github_authenticated": run(["gh", "auth", "status"], check=False).returncode == 0
-                if shutil.which("gh")
-                else False,
+                "github_authenticated": auth["gh"] is True,
+                "profile": profiles_view,
+                "active_implementer_backend": backend,
+                "containment_default": "restricted",
+                "claude_transcripts": str(Path.home() / ".claude/projects") if tools["claude"] else None,
                 "config": configuration(repo.root),
             }
             print(json.dumps(result, indent=2))
-            return 0 if all(result["tools"].values()) and result["github_authenticated"] else 1
-        if args.command in COMMANDS:
+            healthy = (
+                all(tools[tool] for tool in ("git", "gh", "copilot"))
+                and auth["gh"] is True
+                and backend is not None
+                and bool(tools[backend])
+                and auth[backend] is True
+            )
+            return 0 if healthy else 1
+        if args.command == "profile":
+            result = dispatch_profile(repo, args)
+        elif args.command == "sync-skills":
+            from skills import sync as sync_skills
+
+            result = sync_skills(repo.root, check=args.check)
+        elif args.command in COMMANDS:
             result = dispatch(repo, args)
         elif args.command == "memory-init":
             if repo.git("ls-files", "memory"):
@@ -512,7 +580,15 @@ def main():
         elif args.command == "merge-preflight":
             result = merge_preflight(repo, positive(args.pr), args.reviewed_sha)
         elif args.command == "launch":
-            result = launch(repo, args.role, args.task, args.execute, args.managed)
+            result = launch(
+                repo,
+                args.role,
+                args.task,
+                args.execute,
+                args.managed,
+                args.containment,
+                args.containment_reason,
+            )
             if isinstance(result, int):
                 return result
         print(json.dumps(result, indent=2))
