@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import ctypes
 import errno
 import hashlib
 import json
@@ -145,7 +144,15 @@ def verify_content(path, expected):
 def rename_noreplace(source, destination):
     """Linux atomic no-replace rename. Unsupported platforms fail closed."""
     source, destination = Path(source), Path(destination)
-    libc = ctypes.CDLL(None, use_errno=True)
+    try:
+        # Loaded lazily: coordinator commands import this module but never rename
+        # archives, and a broken _ctypes extension must only stop the finishing helper.
+        # A loader failure (missing libffi, unloadable libc) surfaces as OSError, not ImportError.
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+    except (ImportError, OSError, RuntimeError) as exc:
+        raise WorkflowError("Atomic no-replace rename needs a working ctypes module") from exc
     rename = getattr(libc, "renameat2", None)
     if rename is None:
         raise WorkflowError("Atomic no-replace rename is unavailable on this platform")

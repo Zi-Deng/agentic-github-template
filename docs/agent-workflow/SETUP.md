@@ -244,16 +244,21 @@ the exact commands. Avoid a meaningless empty PR solely to obtain a green check.
 
 ```bash
 gh pr checks 1 --json name,state,workflow
-python3 scripts/agentic/workflow.py ruleset --check quality > /tmp/agentic-ruleset.json
+python3 scripts/agentic/workflow.py ruleset --check quality --check agentic-quality > /tmp/agentic-ruleset.json
 cat /tmp/agentic-ruleset.json
 gh api repos/{owner}/{repo}/rulesets --method POST --input /tmp/agentic-ruleset.json
 gh ruleset list
 ```
 
-Replace `1` with the real PR number and `quality` with the **observed** check name.
-Set `.agentic/config.json` → `required_checks` to the same names. Existing projects
-should normally require their own project check and `agentic-quality`. The template's
-`quality` job runs lint, formatting and its complete workflow tests.
+Replace `1` with the real PR number and the check names with the **observed** names.
+Set `.agentic/config.json` → `required_checks` to the same names; `merge-preflight` and the
+finishing gates require every configured name to be server-required and passing, so apply
+the ruleset before merging a configuration that adds a name. Existing projects should
+normally require their own project check and `agentic-quality`. The template requires both
+of its jobs: `quality` runs lint, formatting and the complete suite through `make check`,
+and `agentic-quality` is the portable dependency-free job whose hosted receipt the review
+packet collects. To update an existing ruleset, send the generated JSON with
+`gh api repos/{owner}/{repo}/rulesets/ID --method PUT --input /tmp/agentic-ruleset.json`.
 
 The generated ruleset blocks deletion and force pushes, requires linear history,
 requires a PR, resolves review conversations, dismisses stale approvals and requires

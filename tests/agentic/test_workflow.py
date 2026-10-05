@@ -261,7 +261,16 @@ class WorktreeTests(GitFixture):
         self.commit_task()
         self.reviews = [{"commit_id": self.head, "state": "COMMENTED"}]
         original = workflow.run
-        for checks in [[], [{"name": "quality", "bucket": "skipping", "state": "SKIPPED"}]]:
+        for checks in [
+            [],
+            [{"name": "quality", "bucket": "skipping", "state": "SKIPPED"}],
+            # One required check passing is not enough once configuration names both jobs.
+            [{"name": "quality", "bucket": "pass", "state": "SUCCESS"}],
+            [
+                {"name": "quality", "bucket": "pass", "state": "SUCCESS"},
+                {"name": "agentic-quality", "bucket": "pending", "state": "PENDING"},
+            ],
+        ]:
 
             def fake(args, checks=checks, **kwargs):
                 if args[:3] == ["gh", "pr", "checks"]:
@@ -279,7 +288,12 @@ class WorktreeTests(GitFixture):
         def fake(args, **kwargs):
             if args[:3] == ["gh", "pr", "checks"]:
                 return subprocess.CompletedProcess(
-                    args, 0, json.dumps([{"name": "quality", "bucket": "pass"}]), ""
+                    args,
+                    0,
+                    json.dumps(
+                        [{"name": "quality", "bucket": "pass"}, {"name": "agentic-quality", "bucket": "pass"}]
+                    ),
+                    "",
                 )
             return original(args, **kwargs)
 
