@@ -11,6 +11,49 @@ import review_packet
 from review_fixtures import events, store, stream
 
 
+class EnvelopeAndSchemaTests(GitFixture):
+    def setUp(self):
+        super().setUp()
+        self.commit_task()
+        self.directory = review.prepare(self.repo, 31, 12, 1234)
+        self.packet = self.directory / "packet"
+
+    def test_terminal_envelope_never_replaces_the_observed_assistant_report(self):
+        from review_fixtures import events
+
+        rows = events(self.packet)
+        exact = rows[-2]["data"]["content"]
+        rows.append({"type": "result", "exitCode": 0, "result": exact.rstrip("\n") + "\n\n"})
+        raw = "\n".join(json.dumps(row) for row in rows) + "\n"
+        report, diagnostics = coverage.parse_events(raw, self.packet, self.packet, version="1.0.83")
+        self.assertEqual(report, exact)
+        self.assertIn("conflicting_final_report", diagnostics["reasons"])
+        rows[-1]["result"] = exact
+        raw = "\n".join(json.dumps(row) for row in rows) + "\n"
+        report, diagnostics = coverage.parse_events(raw, self.packet, self.packet, version="1.0.83")
+        self.assertEqual(report, exact)
+        self.assertNotIn("conflicting_final_report", diagnostics["reasons"])
+        # Without any assistant message the envelope still supplies the report.
+        framing = [row for row in rows if row["type"] != "assistant.message"]
+        raw = "\n".join(json.dumps(row) for row in framing) + "\n"
+        report, _ = coverage.parse_events(raw, self.packet, self.packet, version="1.0.83")
+        self.assertEqual(report, exact)
+
+    def test_shipped_report_schema_forbids_empty_finding_fields(self):
+        schema = json.loads((self.packet / "report-schema.json").read_text())
+        finding = schema["properties"]["findings"]["items"]["properties"]
+        for key in ("id", "path", "claim", "trigger", "impact", "evidence", "fix"):
+            self.assertEqual(finding[key], {"type": "string", "minLength": 1}, key)
+
+    def test_diagnostics_for_an_uninstalled_adapter_fail_closed(self):
+        import review_policy
+
+        policy = review_policy.policy(review_policy.choices("claude-code"), {})
+        diagnostics = {"schema_version": 8, "adapter": policy["adapter"]}
+        with self.assertRaisesRegex(workflow.WorkflowError, "not installed|Unsupported coverage diagnostics"):
+            coverage.validate_diagnostics(diagnostics, self.packet, policy)
+
+
 class CoverageTests(GitFixture):
     def setUp(self):
         super().setUp()

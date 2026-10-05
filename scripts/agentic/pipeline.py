@@ -421,6 +421,7 @@ def review_task(
                 raise WorkflowError("Review provider/model/effort/budget changed; explicitly prepare --fresh")
             if same_head and not fresh and "review_policy_digest" not in previous:
                 previous["review_policy_digest"] = round_policy_digest(previous)
+                store.save(state)
         reuse = previous is not None and not fresh and all(previous.get(k) == v for k, v in binding.items())
         record = previous if reuse else None
         needs_run = execute and (record is None or not record.get("run_attempted"))

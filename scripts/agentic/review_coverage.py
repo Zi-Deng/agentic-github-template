@@ -320,9 +320,13 @@ def parse_events(
                     usage = event.get("usage")
                 final = event.get("result")
                 if isinstance(final, str):
-                    if final_seen and report != final:
-                        reasons.add("conflicting_final_report")
-                    report, final_seen = final, True
+                    # The envelope may supply the report only when no root assistant message
+                    # was observed; an observed message is the exact output and is never replaced.
+                    if final_seen:
+                        if report != final:
+                            reasons.add("conflicting_final_report")
+                    else:
+                        report, final_seen = final, True
                 continue
             if data is None and kind in IGNORED_EVENTS | {"session.idle", "session.shutdown"}:
                 data = {}
@@ -606,10 +610,12 @@ def validate_diagnostics(diagnostics, packet, policy=None):
         )
     ):
         raise WorkflowError("Invalid diagnostic fields")
-    if policy and policy["provider"] == "claude-code":
-        from claude_telemetry import validate_summary
-    else:
-        from review_telemetry import validate_summary
+    if policy and policy["provider"] != "copilot":
+        raise WorkflowError(
+            f"Diagnostics for provider {policy['provider']!r} need an adapter this harness does not ship"
+        )
+    from review_telemetry import validate_summary
+
     validate_summary(diagnostics["telemetry"])
     if policy and diagnostics["cli_version"] != policy["cli"]["version"]:
         raise WorkflowError("Diagnostic CLI identity differs from the packet")

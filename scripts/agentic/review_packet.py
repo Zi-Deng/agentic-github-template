@@ -613,6 +613,7 @@ def build(repo, packet, head, ancestor, head_index, base_index, context, cfg, pr
         )
         + "Use scopes.json and scopes/*.json to navigate every entry in required-material.json. Full diff.txt, source-index.json and base-source-index.json remain available.\n"
         "Read each required range through view(path, view_range=[start,end]); grep only credits actual returned matching lines, glob only proves discovery.\n"
+        "A ranged view whose returned text also occurs elsewhere in that artifact is ambiguous and earns no credit; view the complete artifact instead.\n"
         "Return compact JSON matching report-schema.json: copy inventory-sha256.txt into inventory_sha256, list only positively inspected IDs in reviewed, and group specific incomplete reasons in incomplete. Omitted IDs remain unread and block readiness; do not repeat an unread row for each ID. Explain general limits once in limitations. Do not assert budget exhaustion without a provider signal. Never infer execution from static inspection.\n",
         encoding="utf-8",
     )

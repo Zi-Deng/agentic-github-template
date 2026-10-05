@@ -12,7 +12,11 @@ from test_workflow import GitFixture, review, workflow
 
 class CoverageRegressionTests(GitFixture):
     def test_plain_comment_and_green_checks_cannot_satisfy_preflight(self):
+        from review_fixtures import store
+
         self.commit_task()
+        directory = review.prepare(self.repo, 31, 12, 1234)
+        store(self.repo, directory)
         self.reviews = [{"commit_id": self.head, "state": "COMMENTED", "body": "Looks fine"}]
         original = workflow.run
 
@@ -24,7 +28,9 @@ class CoverageRegressionTests(GitFixture):
             return original(args, **kwargs)
 
         with patch.object(workflow, "run", side_effect=checks):
-            with self.assertRaises(workflow.WorkflowError):
+            with self.assertRaisesRegex(workflow.WorkflowError, "No unique published coverage-qualified"):
+                workflow.merge_preflight(self.repo, 31, self.head, directory)
+            with self.assertRaisesRegex(workflow.WorkflowError, "review-directory"):
                 workflow.merge_preflight(self.repo, 31, self.head)
 
     def test_exact_model_output_is_not_stripped_or_prefixed(self):
