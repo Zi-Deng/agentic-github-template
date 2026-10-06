@@ -87,7 +87,8 @@ jobs:
           retention-days: 7
   publish:
     needs: review
-    if: inputs.publish
+    # An INCOMPLETE report is still published (without designation) so the record is public.
+    if: always() && inputs.publish && needs.review.result != 'cancelled'
     environment: copilot-review-publish
     permissions:
       contents: read
@@ -110,3 +111,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/agentic/review.py publish "$RUNNER_TEMP/review"
+      - name: Require observed coverage for successful workflow completion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/agentic/review.py qualify "$RUNNER_TEMP/review"

@@ -45,7 +45,7 @@
   "claude_review_login_root": null,
   "private_paths": [],
   "managed_max_prompt_bytes": 300000,
-  "max_diff_bytes": 300000,
+  "max_diff_bytes": null,
   "max_source_file_bytes": 250000,
   "max_snapshot_bytes": 12000000,
   "required_checks": ["quality", "agentic-quality"],

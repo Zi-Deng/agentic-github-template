@@ -158,6 +158,8 @@ class ReviewerInstallationTests(unittest.TestCase):
         self.assertIn("--require-reviewer-backend copilot", text)
         self.assertIn("register-reviewer copilot", text)
         self.assertIn('get("hosted_profile")', text)
+        self.assertIn("review.py qualify", text)
+        self.assertIn("always() && inputs.publish", text)
         self.assertNotIn("CLAUDE_CODE_OAUTH_TOKEN", text)
         self.assertNotIn("claude-review-token", text)
 

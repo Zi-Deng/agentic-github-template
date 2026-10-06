@@ -32,7 +32,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(config["default_profile"], "astra-copilot")
         self.assertEqual(config["hosted_profile"], "astra-copilot")
         self.assertEqual(set(config["profiles"]), {"astra-claude", "astra-copilot", "fable-gpt"})
-        self.assertEqual(config["max_diff_bytes"], 300_000)
+        self.assertIsNone(config["max_diff_bytes"])
         self.assertEqual(config["managed_max_prompt_bytes"], 300_000)
         self.assertEqual(config["private_paths"], [])
         self.assertIsNone(config["claude_review_login_root"])

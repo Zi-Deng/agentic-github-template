@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+from review_fixtures import store as store_review
 from test_workflow import GitFixture, git, workflow
 
 # The shared fixture establishes the scripts import path.
@@ -74,18 +75,153 @@ class PipelineFixture(GitFixture):
         return super().api(suffix, data=data, **kwargs)
 
     def model_double(self, repo, directory):
+        # A synthetic session that views every required range: qualifies without inference.
         self.model_runs += 1
-        directory = Path(directory)
-        report = directory / "review.md"
-        report.write_text(f"No material findings supported. Mock round {self.model_runs}.\n")
-        meta = review.verify_packet(directory)
-        meta["review_sha256"] = review.digest(report)
-        meta["copilot_version"] = "test double"
-        workflow.write_json(directory / "metadata.json", meta)
-        return report
+        return store_review(repo, directory)
 
 
 class PipelineTests(PipelineFixture):
+    def test_prepared_model_compatibility_change_requires_fresh_packet(self):
+        entry = {
+            "provider": "copilot",
+            "model": "claude-fixture-99",
+            "efforts": ["default"],
+            "cli_version": "1.0.83",
+            "adapter": "copilot-session-events-v2",
+            "evidence": [
+                "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference"
+            ],
+        }
+        cfg = workflow.configuration(self.root)
+        cfg["review_model_extensions"] = [entry]
+        workflow.write_json(self.root / ".agentic/config.json", cfg)
+        git(self.root, "commit", "-qam", "declare fixture model compatibility")
+        first = pipeline.review_task(self.repo, 12, review_model=entry["model"])
+        packet = Path(first["directory"]) / "metadata.json"
+        original = packet.read_bytes()
+        entry["efforts"].append("high")
+        workflow.write_json(self.root / ".agentic/config.json", cfg)
+        git(self.root, "commit", "-qam", "extend fixture model compatibility")
+        with self.assertRaisesRegex(workflow.WorkflowError, "--fresh"):
+            pipeline.review_task(self.repo, 12, review_model=entry["model"])
+        self.assertEqual(packet.read_bytes(), original)
+        fresh = pipeline.review_task(self.repo, 12, review_model=entry["model"], fresh=True)
+        self.assertNotEqual(fresh["directory"], first["directory"])
+        self.assertEqual(self.model_runs, 0)
+
+    def test_prepared_selection_is_immutable_and_fresh_override_packet_is_explicit(self):
+        result = pipeline.review_task(self.repo, 12, review_model="claude-sonnet-5")
+        directory = Path(result["directory"])
+        original = (directory / "metadata.json").read_bytes()
+        for overrides in (
+            {"review_model": "claude-opus-5.5"},
+            {"review_model": "claude-sonnet-5", "review_effort": "high"},
+            {},
+        ):
+            with self.subTest(overrides=overrides), self.assertRaisesRegex(workflow.WorkflowError, "--fresh"):
+                pipeline.review_task(self.repo, 12, **overrides)
+            self.assertEqual((directory / "metadata.json").read_bytes(), original)
+        fresh = pipeline.review_task(self.repo, 12, fresh=True)
+        self.assertNotEqual(fresh["directory"], result["directory"])
+        self.assertEqual(fresh["review_policy"]["model"], "claude-opus-5")
+        self.assertEqual(fresh["model"], "claude-opus-5")
+
+    def test_attempted_recovery_uses_bound_policy_and_override_needs_continuation(self):
+        with patch.object(review, "review", side_effect=self.model_double):
+            first = pipeline.review_task(self.repo, 12, execute=True)
+        profiles.use_profile(self.repo, "fable-gpt")
+        with patch.object(review, "review", side_effect=AssertionError("Recovery cannot infer again")):
+            recovered = pipeline.review_task(self.repo, 12, execute=True, publish=True)
+            self.assertEqual(recovered["directory"], first["directory"])
+            self.assertEqual(recovered["review_policy"]["model"], "claude-opus-5")
+            self.assertEqual(recovered["status"], "published")
+            with self.assertRaisesRegex(workflow.WorkflowError, "--fresh"):
+                pipeline.review_task(self.repo, 12, execute=True, review_model="gpt-6-astra")
+            with self.assertRaisesRegex(workflow.WorkflowError, "continuation"):
+                pipeline.review_task(self.repo, 12, execute=True, fresh=True)
+        self.assertEqual(self.model_runs, 1)
+
+    def test_attempted_recovery_does_not_resolve_the_current_selection(self):
+        with patch.object(review, "review", side_effect=self.model_double):
+            first = pipeline.review_task(self.repo, 12, execute=True)
+        with (
+            patch.object(
+                pipeline, "review_selection", side_effect=workflow.WorkflowError("Obsolete selection")
+            ),
+            patch.object(review, "review", side_effect=AssertionError("Recovery cannot infer")),
+        ):
+            recovered = pipeline.review_task(self.repo, 12, execute=True, publish=True)
+            self.assertEqual(recovered["review_policy"], first["review_policy"])
+            with self.assertRaisesRegex(workflow.WorkflowError, "Obsolete selection"):
+                pipeline.review_task(self.repo, 12, fresh=True)
+        self.assertEqual(self.model_runs, 1)
+
+    def test_partial_report_is_published_without_readiness_designation(self):
+        with patch.object(
+            review,
+            "review",
+            side_effect=lambda repo, directory: store_review(
+                repo, directory, "Incomplete source inspection.\n"
+            ),
+        ):
+            result = pipeline.review_task(self.repo, 12, execute=True, publish=True)
+        self.assertEqual(result["status"], "published-incomplete")
+        self.assertTrue(result["incomplete"])
+        self.assertIsNone(result["designated_review"])
+        self.assertEqual(result["attempted_rounds"], 1)
+        self.assertIn("INCOMPLETE", self.reviews[0]["body"])
+        with self.assertRaises(workflow.WorkflowError):
+            pipeline.validate_designated(self.repo, tasks.TaskStore(self.repo).read("issue-12"))
+
+    def test_pre_coverage_round_publishes_but_cannot_be_designated(self):
+        # A round whose packet predates the coverage gate (schema 1, report written directly)
+        # is still published exactly, but never designated or finished.
+        with patch.object(review, "review", side_effect=self.model_double):
+            result = pipeline.review_task(self.repo, 12, execute=True)
+        directory = Path(result["directory"])
+        meta = review.verify_packet(directory)
+        for name in (
+            "review-result.json",
+            "review-capture.json",
+            "diagnostics.json",
+            "coverage.json",
+            "attempt.json",
+            "usage.json",
+        ):
+            (directory / name).unlink(missing_ok=True)
+        legacy = {
+            key: value
+            for key, value in meta.items()
+            if key
+            not in {
+                "kind",
+                "overrides",
+                "selection_sources",
+                "diagnostics_sha256",
+                "coverage_sha256",
+                "provider_version",
+            }
+        }
+        legacy.update(schema_version=1, copilot_version="pre-coverage double")
+        review.atomic_json(directory / "metadata.json", legacy)
+        with patch.object(review, "review", side_effect=AssertionError("No rerun")):
+            published = pipeline.review_task(self.repo, 12, execute=True, publish=True)
+        self.assertEqual(published["status"], "published-incomplete")
+        self.assertIsNone(published["designated_review"])
+        self.assertTrue(
+            self.reviews[0]["body"].endswith(f"<!-- agentic-review:{self.head}:{legacy['review_sha256']} -->")
+        )
+        with self.assertRaises(workflow.WorkflowError):
+            pipeline.validate_designated(self.repo, tasks.TaskStore(self.repo).read("issue-12"))
+
+    def test_missing_diagnostics_refuse_even_a_manually_changed_designation(self):
+        with patch.object(review, "review", side_effect=self.model_double):
+            result = pipeline.review_task(self.repo, 12, execute=True, publish=True)
+        self.assertTrue(result["coverage_qualified"])
+        (Path(result["directory"]) / "diagnostics.json").unlink()
+        with self.assertRaises(workflow.WorkflowError):
+            pipeline.validate_designated(self.repo, tasks.TaskStore(self.repo).read("issue-12"))
+
     def test_existing_pr_receives_push_and_updated_evidence(self):
         result = pipeline.publish_pr(self.repo, 12, "Current title", self.body_file)
         self.assertEqual(result["pr"], 31)
@@ -284,7 +420,7 @@ class PipelineTests(PipelineFixture):
             patch.dict(os.environ, {profiles.ENV_NAME: "fable-gpt"}),
             patch.object(review, "review", side_effect=self.model_double),
         ):
-            with self.assertRaisesRegex(workflow.WorkflowError, "use --fresh"):
+            with self.assertRaisesRegex(workflow.WorkflowError, "--fresh"):
                 pipeline.review_task(self.repo, 12, execute=True)
             self.assertEqual(self.model_runs, 0)
             result = pipeline.review_task(self.repo, 12, execute=True, fresh=True)

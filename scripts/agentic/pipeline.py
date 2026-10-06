@@ -6,7 +6,8 @@ import re
 import subprocess
 
 import review as independent
-from profiles import note, pinned_executor, review_selection, warn
+import review_policy
+from profiles import family, note, pinned_executor, review_selection, warn
 from tasks import (
     TaskStore,
     body_text,
@@ -276,16 +277,28 @@ def report_record(repo, state, round_record):
         raise WorkflowError("Review metadata differs from the registered pipeline round")
     if round_record["contract_digest"] != digest(state["approval"]["contract"]):
         raise WorkflowError("Review used a superseded contract")
+    if round_record.get("review_policy") is not None and (
+        meta.get("review_policy") != round_record["review_policy"]
+        or digest(meta["review_policy"]) != round_policy_digest(round_record)
+    ):
+        raise WorkflowError("Review provider policy differs from the registered immutable round")
     report = plain_path(directory / "review.md")
     if (
         not report.is_file()
-        or not meta.get("copilot_version")
+        or not meta.get(independent.version_field(meta))
         or independent.digest(report) != meta.get("review_sha256")
     ):
         raise WorkflowError("Pipeline review is incomplete or its report changed")
-    body = report.read_text(encoding="utf-8")
-    marker = f"<!-- agentic-review:{meta['head_sha']}:{meta['review_sha256']} -->"
-    return meta, body + "\n" + marker
+    return meta, independent.publication_body(directory)
+
+
+def round_policy_digest(round_record):
+    """Rounds prepared before digests were recorded are bound through their stored policy."""
+    if round_record.get("review_policy_digest"):
+        return round_record["review_policy_digest"]
+    if round_record.get("review_policy") is not None:
+        return digest(round_record["review_policy"])
+    return None
 
 
 def published_report(repo, state, round_record):
@@ -324,6 +337,7 @@ def validate_designated(repo, state):
     ]
     if len(matching) != 1:
         raise WorkflowError("Designated review has no unique completed pipeline round")
+    independent.qualification(designated["directory"], require=True)
     published = published_report(repo, state, matching[0])
     if not published or positive(published["id"]) != designated["review_id"]:
         raise WorkflowError("Designated GitHub review is missing or changed")
@@ -341,39 +355,16 @@ def review_task(
     approved_continuation=False,
     retry_confirmed_absent=False,
     allow_same_family=False,
+    prior_review=None,
+    review_provider=None,
+    review_model=None,
+    review_effort=None,
 ):
     number = positive(number)
     store = TaskStore(repo)
     with store.locked(f"issue-{number}") as state:
         contract = verify_contract(repo, state)
         pr = current_task_pr(repo, state)
-        executor = state.get("executor")
-        implementer = None
-        if executor:
-            pinned = pinned_executor(executor)
-            implementer = {"backend": pinned["backend"], "model": pinned["model"], "family": pinned["family"]}
-        # The task's pinned executor, not the profile's declared implementer, is what the
-        # same-family gate compares against; a recorded profile allowance covers only its own pairing.
-        selection = review_selection(
-            repo,
-            configuration(repo.root),
-            implementer=implementer,
-            allow_same_family=allow_same_family,
-            warn_same_family=False,
-        )
-        policy = selection["policy"]
-        reviewer = {
-            "backend": policy["provider"],
-            "model": policy["model"],
-            "effort": policy["effort"],
-            "family": selection["reviewer_family"],
-        }
-        same_family = selection["provenance"]["same_family"]
-        acknowledged = selection["provenance"]["same_family_acknowledged"]
-        if same_family:
-            warn(
-                f"review round for issue {number} uses the implementer's model family ({reviewer['family']})"
-            )
         rounds = state.setdefault("review_rounds", [])
         binding = {
             "head_sha": pr["head"]["sha"],
@@ -381,15 +372,58 @@ def review_task(
             "contract_digest": digest(contract),
         }
         previous = rounds[-1] if rounds else None
-        reuse = previous and not fresh and all(previous.get(k) == v for k, v in binding.items())
+        same_head = previous is not None and all(previous.get(k) == v for k, v in binding.items())
+        overrides = any(value is not None for value in (review_provider, review_model, review_effort))
+        legacy_recovery = same_head and not fresh and not overrides and previous.get("review_policy") is None
+        executor = state.get("executor")
+        implementer = None
+        if executor:
+            pinned = pinned_executor(executor)
+            implementer = {"backend": pinned["backend"], "model": pinned["model"], "family": pinned["family"]}
+        selection = None
+        if (
+            same_head
+            and not fresh
+            and not overrides
+            and previous.get("run_attempted")
+            and previous.get("review_policy")
+        ):
+            # Recovery and publication are bound to the attempted packet, even if the
+            # operator subsequently changes the active profile.
+            policy = review_policy.validate_policy(previous["review_policy"])
+            selection = {
+                "profile": previous.get("profile"),
+                "policy": policy,
+                "sources": previous.get("selection_sources"),
+                "overrides": previous.get("overrides"),
+                "provenance": {
+                    "same_family": previous.get("same_family"),
+                    "same_family_acknowledged": previous.get("same_family_acknowledged"),
+                },
+                "reviewer_family": previous.get("reviewer_family") or family(policy["model"]),
+            }
+        elif not legacy_recovery:
+            # The task's pinned executor, not the profile's declared implementer, is what the
+            # same-family gate compares against; a recorded profile allowance covers only its own pairing.
+            selection = review_selection(
+                repo,
+                configuration(repo.root),
+                review_provider=review_provider,
+                review_model=review_model,
+                review_effort=review_effort,
+                implementer=implementer,
+                allow_same_family=allow_same_family,
+                warn_same_family=False,
+            )
+        if not legacy_recovery:
+            binding["review_policy_digest"] = digest(selection["policy"])
+            if same_head and not fresh and round_policy_digest(previous) != binding["review_policy_digest"]:
+                raise WorkflowError("Review provider/model/effort/budget changed; explicitly prepare --fresh")
+            if same_head and not fresh and "review_policy_digest" not in previous:
+                previous["review_policy_digest"] = round_policy_digest(previous)
+                store.save(state)
+        reuse = previous is not None and not fresh and all(previous.get(k) == v for k, v in binding.items())
         record = previous if reuse else None
-        if record is not None and execute and not record.get("run_attempted"):
-            prepared_model = round_reviewer_model(record, independent.verify_packet(record["directory"]))
-            if prepared_model != reviewer["model"]:
-                raise WorkflowError(
-                    f"Prepared round requests reviewer {prepared_model} but the active profile requests "
-                    f"{reviewer['model']}; switch profile or use --fresh"
-                )
         needs_run = execute and (record is None or not record.get("run_attempted"))
         attempted = sum(bool(item.get("run_attempted")) for item in rounds)
         if (
@@ -401,27 +435,39 @@ def review_task(
         if approved_continuation and not (continue_reason or "").strip():
             raise WorkflowError("Explicit continuation requires a concrete reason")
         if record is None:
+            policy = selection["policy"]
+            same_family = selection["provenance"]["same_family"]
+            if same_family:
+                warn(
+                    f"review round for issue {number} uses the implementer's model family "
+                    f"({selection['reviewer_family']})"
+                )
             directory = independent.prepare(
                 repo,
                 state["pr"],
                 number,
                 state["approval"]["plan_comment"],
                 expected_head=binding["head_sha"],
+                prior_review=prior_review,
                 selection=selection,
             )
+            if independent.verify_packet(directory)["review_policy"] != policy:
+                raise WorkflowError("Review selection changed during preparation; prepare a fresh packet")
             record = {
                 **binding,
+                "review_policy": policy,
                 "directory": str(directory),
                 "status": "prepared",
                 "run_attempted": False,
-                "reviewer_backend": reviewer["backend"],
-                "reviewer_model": reviewer["model"],
-                "reviewer_effort": reviewer["effort"],
-                "reviewer_family": reviewer["family"],
-                "review_policy": policy,
+                "reviewer_backend": policy["provider"],
+                "reviewer_model": policy["model"],
+                "reviewer_effort": policy["effort"],
+                "reviewer_family": selection["reviewer_family"],
                 "profile": selection["profile"],
+                "selection_sources": selection["sources"],
+                "overrides": selection["overrides"],
                 "same_family": same_family,
-                "same_family_acknowledged": acknowledged,
+                "same_family_acknowledged": selection["provenance"]["same_family_acknowledged"],
             }
             rounds.append(record)
             store.save(state)
@@ -442,12 +488,18 @@ def review_task(
                 record["status"] = "incomplete"
                 store.save(state)
                 raise
-            record["status"] = "reviewed"
+            record["coverage_qualified"] = independent.coverage_ready(record["directory"])
+            record["status"] = "reviewed" if record["coverage_qualified"] else "reviewed-incomplete"
             store.save(state)
         elif execute and record.get("run_attempted"):
             # Recover a completed report after interruption, but never rerun an
             # uncertain model invocation in this directory.
+            independent.recover_review(repo, record["directory"])
             report_record(repo, state, record)
+            if record["status"] not in {"publishing", "published", "published-incomplete"}:
+                record["coverage_qualified"] = independent.coverage_ready(record["directory"])
+                record["status"] = "reviewed" if record["coverage_qualified"] else "reviewed-incomplete"
+                store.save(state)
         if publish:
             report_record(repo, state, record)
             observed = published_report(repo, state, record)
@@ -466,21 +518,28 @@ def review_task(
             if not observed:
                 raise WorkflowError("Published pipeline review is not yet observable")
             independent.current_pr(repo, state["pr"], binding["head_sha"], binding["base_sha"])
-            record["status"] = "published"
-            state["designated_review"] = {
-                **binding,
-                "directory": record["directory"],
-                "review_id": positive(observed["id"]),
-                "url": observed["html_url"],
-            }
+            qualified = independent.coverage_ready(record["directory"])
+            record["coverage_qualified"] = qualified
+            record["status"] = "published" if qualified else "published-incomplete"
+            state.pop("designated_review", None)
+            if qualified:
+                state["designated_review"] = {
+                    **binding,
+                    "directory": record["directory"],
+                    "review_id": positive(observed["id"]),
+                    "url": observed["html_url"],
+                }
             state.pop("finish", None)
             store.save(state)
         return {
             "pr": state["pr"],
             "directory": record["directory"],
             "status": record["status"],
-            "model": record.get("reviewer_model"),
+            "incomplete": record.get("coverage_qualified") is False,
+            "coverage_qualified": record.get("coverage_qualified"),
+            "model": record.get("reviewer_model") or record.get("review_policy", {}).get("model"),
             "profile": record.get("profile"),
+            "review_policy": record.get("review_policy"),
             "attempted_rounds": sum(bool(item.get("run_attempted")) for item in rounds),
             "designated_review": state.get("designated_review"),
         }
@@ -514,6 +573,8 @@ def add_commands(sub):
     ):
         review_parser.add_argument("--" + flag, action="store_true")
     review_parser.add_argument("--continue-reason")
+    review_parser.add_argument("--prior-review")
+    review_policy.add_arguments(review_parser)
 
 
 def dispatch(repo, args):
@@ -536,5 +597,9 @@ def dispatch(repo, args):
             args.approved_continuation,
             args.retry_confirmed_absent,
             args.allow_same_family,
+            args.prior_review,
+            args.review_provider,
+            args.review_model,
+            args.review_effort,
         )
     raise WorkflowError("Unknown pipeline operation")
