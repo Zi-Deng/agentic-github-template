@@ -329,7 +329,8 @@ maintainer gate, not a token failure. An enabled publication job has a separate 
 
 The manual workflow requires PR number, issue number, approved-plan comment ID and
 the exact head SHA, and accepts an optional `profile` name (empty means the repository
-`default_profile`). It uses a trusted default-branch checkout, builds a text snapshot,
+`hosted_profile`; a profile whose reviewer backend is not Copilot is refused at
+preparation, never converted). It uses a trusted default-branch checkout, builds a text snapshot,
 and runs Copilot with no GitHub write credential. An optional publication job gets
 PR write permission only after the generation job completes; it publishes INCOMPLETE
 reports too, then runs `review.py qualify`, so the workflow run succeeds only for a
