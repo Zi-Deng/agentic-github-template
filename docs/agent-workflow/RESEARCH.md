@@ -161,9 +161,9 @@ regexes refuse `auto` and aliases because the policy forbids floating models.
 The maintainer asked to consolidate this template's switchable profiles with the review
 layer that `Zi-Deng/FLOW-DC` built on top of an earlier template revision (`b4a1df7`).
 Sources read in full on 2026-10-05: FLOW-DC main `8271616` (`scripts/agentic/*`, tests,
-`docs/agent-workflow/{REVIEW,COVERAGE,PROVIDERS,FINISH,SKILLS}.md`), its unmerged batch
-branch `issue-31-bounded-review-units` at `c303c46`, and the live state of its control
-clone. Decisions:
+every `docs/agent-workflow/*.md` including its provider guide), its unmerged batch
+branch for bounded review units at `c303c46`, and the live state of its control clone.
+Decisions:
 
 | Decision | Rationale |
 | --- | --- |
@@ -172,7 +172,7 @@ clone. Decisions:
 | Closed reviewer catalog with exact per-provider spellings (`claude-opus-5-5` for Claude Code, `claude-opus-5.5` for Copilot), no aliases | Provider IDs differ; translation would float |
 | Hosted Actions review is Copilot-only through `hosted_profile` | No Claude token in Actions; a profile resolving elsewhere is refused, not converted |
 | Coverage gate ported for Copilot first; the Claude Code adapter, native login, activation diagnostics and batch units follow | Each PR had to stay under the pre-gate reviewer's 300 KB cap and get one independent review |
-| Frozen FLOW-DC adapters (packet schemas 2, 3, 4, 6), issue-33 history and project literals not ported | History belongs to FLOW-DC; the template keeps schema 1, 5 and 7 inspectable |
+| Frozen FLOW-DC adapters (packet schemas 2, 3, 4, 6), its migration-history records and project literals not ported | History belongs to FLOW-DC; the template keeps schema 1, 5 and 7 inspectable |
 | `max_diff_bytes` ships as `null` once the inventory bounds material per item and scope | A diff the reviewer cannot read in one request comes back INCOMPLETE instead of being refused |
 | Default reviewer flips to Claude Code native only after the first coverage-qualified native review is recorded | The template's own evidence policy |
 

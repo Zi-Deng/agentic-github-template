@@ -1,6 +1,6 @@
 ---
 name: agentic-review
-description: "Run and publish an independent review by the active profile's configured reviewer model of a GitHub pull request using a fixed head/base snapshot through Copilot CLI. Use for the review phase or re-review after repair; do not perform the review in the implementation conversation."
+description: "Run and publish an independent review of a GitHub pull request using a fixed head/base snapshot through the active profile's reviewer backend and exact model. Use for the review phase or re-review after repair; do not perform the review in the implementation conversation."
 ---
 
 # Review Pull Request

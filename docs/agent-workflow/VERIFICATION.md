@@ -347,11 +347,13 @@ The repaired head has not been independently reviewed. Under the one-attempted-r
 policy, a further round needs an explicit maintainer request; the maintainer decides
 whether to request it or to merge on the reviewed-head rule exception.
 
-### Pending live evidence (post-merge)
+### Live evidence delivered after merge
 
-- The `fable-gpt` pilot on the stale-worktree `doctor` warning issue, including the single
-  recorded `--containment bypass` run, the same Claude session across implement and repair,
-  a published `gpt-6-astra` review, and the switch back to `astra-claude`.
+- The `fable-gpt` pilot on the finished-worktree `doctor` report was delivered on
+  2026-10-05 as PR #18 (one recorded `--containment bypass` run, the same Claude Code
+  session across implement, resume and repair, a published `gpt-6-astra` review); see the
+  consolidation section below. The switch back is to `astra-copilot`, the default profile
+  since PR #13.
 
 ## Review-foundation consolidation — 2026-10-05
 
@@ -393,8 +395,25 @@ exception; the pilot was implemented by the managed Claude Code executor.
 | #19 head `20a185e` | [5421619952](https://github.com/Zi-Deng/agentic-github-template/pull/19#pullrequestreview-5421619952), 15 premium requests | 3 P2, 2 P3, 4 questions | `2491a76`, dispositions posted; merged by the maintainer after a merge from main and a fixture fix |
 
 The A2 review ran against a 295 767-byte diff under the pre-gate runner's 300 KB cap.
-No review under the coverage gate had run when this section was written; the PR that
-adds this section is the first.
+
+### First review under the coverage gate (PR #21, head `0136c13`)
+
+`task-review 20 --execute --publish` from the control clone, `astra-copilot`, Copilot
+`claude-opus-5` through the registered pinned 1.0.83 binary, 15 premium requests, 668 s:
+status **published-incomplete**, no designation. The wrapper recorded zero diagnostic
+reasons, the capability probe true for `view`, `grep` and `glob`, 150 retained tool
+records (142 successful views) and a well-formed schema-2 JSON report with four findings.
+The inventory held 201 required items (11 523 lines, 654 KB in 20 scopes); 115 were
+observed read, 84 were explicitly reported unread (69 test files, the seven ranges of
+`test-map.json`, the eight head copies of the `.claude/skills` mirror) and 2 ranged views
+of `SKILLS.md` were ambiguous and earned no credit. The reviewer counted 117 as read; the
+wrapper credits only ranges its literal results covered. The test inventory dominated
+because every file under `docs/agent-workflow` maps to the `agentic-workflow` component,
+so a documentation PR carries every workflow test as required material; a narrower
+mapping for documentation-only changes is an open follow-up, not a bypass. The four
+findings were repaired in the same PR; the repaired head needs a fresh round, and the
+maintainer decides between an explicitly authorized continuation with `--prior-review`
+and the documented maintainer-decision merge.
 
 ### `fable-gpt` pilot (issue #16)
 
