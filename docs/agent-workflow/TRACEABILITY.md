@@ -21,7 +21,7 @@ the template and identifies deliberate adaptations.
 | 4.6. CODEOWNERS | Setup instructions for active eligible reviewers | No fictional team or unsatisfiable solo owner approval |
 | 5. Risk and plan design | T0–T4 table; role prompts; plan comment ID | Plan association checked mechanically; approval interpretation remains human |
 | 6.1–6.5. Golden path to checks | Capture/plan/prepare/implement skills, approved-contract state, managed implementer launch (Codex or Claude Code by profile), draft PR helper and CI | Exact executor UUID and task binding; approval before coding; early draft PR and documented evidence |
-| 6.6. Independent review | Snapshot preparer, Copilot custom agent, read/search tool allowlist | Fresh process/config; no implementation history or PR hook execution |
+| 6.6. Independent review | Snapshot preparer with a required-material inventory and scopes, Copilot custom agent with `view`/`grep`/`glob`, immutable per-round policy, coverage gate | Fresh process/config; a round qualifies only when every required item was observed read; INCOMPLETE reports publish without designation |
 | 6.7. Repair protocol | Repair skill, exact-session resume and public disposition procedure | Reviews and inline comments collected; user-selected one attempted round by default, with documented critical P0/P1 or explicit continuation; changed head/base requires fresh review |
 | 6.8. Merge and cleanup | Finish skill, human-run script, journaled archival and guarded cleanup | Verified merge, matching tips and preserved ignored artifacts; remote deletion uses explicit SHA lease |
 | 7. Review quality and independence | Review rubric with P0–P3 and six required finding components | Static reviewer explicitly reports that it executed no tests |
@@ -29,7 +29,7 @@ the template and identifies deliberate adaptations.
 | 8.3–8.4. Provenance and large artifacts | Hash/timing/exit-status manifest; artifact policy | Artifact freshness and scientific design still require inspection |
 | 9. Validation tiers | V0–V4 ladder; CI; project CPU rollout plans | No GPU or costly campaign automatically triggered by PRs |
 | 10. Security/governance | Read-only CI tokens; pinned actions; protected manual environments | No PR code execution in model job; tool controls are not an OS sandbox |
-| 11. Cost/context/WIP | Explicit profile policy (default `astra-claude`, selectable `fable-gpt`) and bounded review; daily checklist | Cheaper or same-family pairings only after a deliberate policy change |
+| 11. Cost/context/WIP | Explicit profile policy (default `astra-copilot`; `astra-claude` and `fable-gpt` selectable), typed per-provider budgets and one bounded request per round; daily checklist | Cheaper or same-family pairings only after a deliberate policy change |
 | 12. Failure modes | Negative regression tests; recovery guidance | Preserves dirty worktrees, ignored outputs and post-merge commits |
 | 13. Daily checklist | Operating guide daily rhythm | Durable artifacts rather than dependence on a private chat |
 | Appendix A | Required issue form | Retains all contract dimensions and adds budget/stop conditions |
@@ -85,3 +85,13 @@ the template and identifies deliberate adaptations.
     `.claude/skills/`, so byte-identical copies are generated and checked; `CLAUDE.md`,
     `.claude/settings.json` and `.mcp.json` are refused because they would suppress
     `AGENTS.md` or execute hooks inside a headless executor.
+13. **Qualify a review by observed coverage, not by its existence.** The guide's merge
+    gate asks for a published review of the exact head. A model can skim a snapshot and
+    still produce a plausible report, so this implementation (ported from FLOW-DC) builds
+    a required-material inventory into every packet, probes the reviewer's literal tools
+    in the same request, correlates returned lines with immutable packet text, and
+    designates a round only when every required item was observed read. A partial report
+    is published as INCOMPLETE and never designated; `merge-preflight` takes the saved
+    packet directory and compares the published body byte for byte. Provider, exact
+    model, effort, CLI pin and budget are frozen into an immutable policy per round, and
+    the hosted path stays Copilot-only.

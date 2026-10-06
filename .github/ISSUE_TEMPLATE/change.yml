@@ -34,13 +34,13 @@ body:
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Binary or measurable outcomes with a criterion-to-evidence mapping.
+      description: Separate numbered outcomes with a criterion-to-evidence mapping; identify required source, tests and cross-boundary concerns. The review packet makes each numbered item a required material.
     validations: {required: true}
   - type: textarea
     id: validation
     attributes:
       label: Validation plan
-      description: Exact commands, fixtures, tolerances and V0–V4 evidence level.
+      description: Exact commands, fixtures, tolerances and V0–V4 evidence level. Separate static inspection from executable checks and scientific evidence; expose omissions.
     validations: {required: true}
   - type: textarea
     id: domain
@@ -52,7 +52,7 @@ body:
     id: budget
     attributes:
       label: Budget and stop conditions
-      value: "Use the active profile's implementer for non-review roles and its Copilot reviewer for independent review (`workflow.py profile show`). One attempted review round by default; a further round only for a supported critical P0/P1 finding or an explicit request. No GPU campaign unless separately authorized."
+      value: "Use the active profile's implementer for non-review roles and its reviewer backend and exact model for independent review (`workflow.py profile show`); the default `astra-copilot` reviews with Copilot `claude-opus-5` within 900 seconds and 400 AI credits. One attempted review round by default, including failures and INCOMPLETE coverage; a further round only for a supported critical P0/P1 repair verification or an explicit request. No GPU campaign unless separately authorized."
     validations: {required: true}
   - type: textarea
     id: rollback

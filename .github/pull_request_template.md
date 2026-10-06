@@ -40,4 +40,5 @@ Include compatibility, permissions, restricted data, dependency changes and reco
 - Material findings and disposition (fix / evidence-backed rebuttal / follow-up issue):
 - Implementer tool/model:
 - Independent reviewer tool/requested model:
+- Coverage status (coverage-qualified or INCOMPLETE) and private packet directory:
 - Human decisions:

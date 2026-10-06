@@ -168,9 +168,11 @@ runner for untrusted PR code.
 ## 8. Request independent review
 
 Return to the main checkout. Use the [review procedure](REVIEW.md) to prepare a fresh
-snapshot, run the active profile's reviewer through Copilot CLI and publish its COMMENT
-review. Supply the
-approved plan comment ID. The review records the exact head and base commits.
+snapshot, run the active profile's reviewer and publish its COMMENT review, whose header
+states whether the inspection was **coverage-qualified** or **INCOMPLETE**. Supply the
+approved plan comment ID. The review records the exact head and base commits and the
+immutable policy (provider, exact model, effort, CLI pin, budget) it ran under. Only a
+coverage-qualified published report is designated for finishing.
 
 ## 9. Repair in the same PR
 
@@ -212,8 +214,9 @@ python3 scripts/agentic/workflow.py merge-preflight 456 \
   --review-directory /absolute/review-directory-of-the-qualified-report
 ```
 
-Preflight checks current PR state, target branch, exact head, recorded review and
-required checks. It prints a `gh pr merge --squash --match-head-commit ...` command;
+Preflight checks current PR state, target branch, exact head, the coverage-qualified
+saved record whose exact body was published for that head, and required checks. It
+prints a `gh pr merge --squash --match-head-commit ...` command;
 it does not execute it. A human reads the findings, checks conversation resolution
 and domain evidence, then runs the command. This template uses immediate human merge
 instead of automatically queueing a future merge decision.
@@ -236,6 +239,22 @@ outputs deliberately first; that low-level command does not delete the remote br
 
 For a closed but unmerged PR, preserve the worktree and investigate. Abandonment is
 a separate deliberate action, never an alias for successful cleanup.
+
+## Review coverage and recovery
+
+Use the [coverage runbook](COVERAGE.md) for every review. The immutable packet exposes
+individual acceptance items, source hunks with context, relevant tests and prior findings.
+One request covers deterministic scopes plus a cross-boundary pass; scopes do not
+increase the request or credit budget. `task-review --prior-review DIRECTORY` validates
+repair ancestry and retains uncovered material. A changed head/base needs fresh evidence.
+
+A report with missing capability, malformed telemetry or unread required material is
+INCOMPLETE, even when its findings are useful. Publication labels that limitation;
+managed designation, hosted qualification, preflight and finish refuse readiness, and
+[FINISH.md](FINISH.md#when-the-review-is-incomplete) describes the maintainer's options.
+Inspect durable sanitized diagnostics before any authorized continuation. Recover a
+valid saved journal without another paid call. Never relabel pre-gate records as covered.
+The operator can rewrite private records; this is accounting, not owner-proof attestation.
 
 ## Daily rhythm
 

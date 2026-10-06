@@ -17,3 +17,9 @@ be conflated. See docs/agent-workflow/COVERAGE.md for current evidence boundarie
 
 This profile applies only to explicit Copilot selection. Native Claude Code uses a
 separate adapter; see [provider policy](../docs/agent-workflow/PROVIDERS.md).
+
+Use START.txt, scopes.json and required-material.json when a packet is provided.
+Complete the same-request literal-tool capability probe and return report-schema.json.
+Missing tool evidence or required material makes coverage incomplete, even with useful
+findings. The reviewer executes no tests. CI association and tested checkout must not
+be conflated. See docs/agent-workflow/COVERAGE.md for the evidence boundaries.
