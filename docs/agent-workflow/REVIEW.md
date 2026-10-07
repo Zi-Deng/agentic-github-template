@@ -1,8 +1,8 @@
 # Independent provider review
 
-The reviewer runs in a new provider process (the pinned Copilot CLI today; a native
-Claude Code adapter follows) and receives committed artifacts, not the implementation
-conversation. Its model-facing tools are read-only `view`, `grep` and `glob`. The wrapper
+The reviewer runs in a new provider process (the pinned Copilot CLI or the pinned native
+Claude Code binary, as the active profile selects; see [PROVIDERS.md](PROVIDERS.md)) and
+receives committed artifacts, not the implementation conversation. Its model-facing tools are read-only `view`, `grep` and `glob`. The wrapper
 performs Git/GitHub operations outside that model process and qualifies a review only
 when it observed the reviewer read every required material; see [COVERAGE.md](COVERAGE.md).
 

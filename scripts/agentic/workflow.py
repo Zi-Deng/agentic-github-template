@@ -590,6 +590,34 @@ def merge_preflight(repo, number, reviewed_sha, review_directory=None):
     }
 
 
+def review_policy_arguments(parser):
+    import review_policy
+
+    review_policy.add_arguments(parser)
+
+
+def diagnose_claude(repo, args):
+    """One recorded activation diagnostic under the active (or per-call) Claude selection."""
+    import claude_activation
+    import review_policy
+    from profiles import review_selection
+
+    if review_policy.exception_from_args(args) is not None:
+        raise WorkflowError("Activation diagnostics never carry a budget exception")
+    cfg = configuration(repo.root)
+    selection = review_selection(
+        repo,
+        cfg,
+        review_provider=args.review_provider,
+        review_model=args.review_model,
+        review_effort=args.review_effort,
+        warn_same_family=False,
+    )
+    return claude_activation.run(
+        repo, cfg, selection, purpose=args.purpose, reason=args.reason, login_root=selection["login_root"]
+    )
+
+
 def claude_logged_in():
     result = run(["claude", "auth", "status"], check=False)
     if result.returncode:
@@ -684,6 +712,13 @@ def main():
     merge.add_argument("pr")
     merge.add_argument("--reviewed-sha", required=True)
     merge.add_argument("--review-directory", required=True)
+    diagnose = sub.add_parser(
+        "diagnose-claude",
+        help="Run one native Claude activation diagnostic (300 s / $2 reference) and record it",
+    )
+    diagnose.add_argument("--purpose", choices=["native-tools-and-source", "isolation-refusal"])
+    diagnose.add_argument("--reason")
+    review_policy_arguments(diagnose)
     register = sub.add_parser(
         "register-reviewer", help="Verify and privately register a pinned reviewer binary"
     )
@@ -786,6 +821,10 @@ def main():
             import review_cli
 
             result = review_cli.register(repo, args.provider, args.binary, args.proof_directory)
+        elif args.command == "diagnose-claude":
+            result = diagnose_claude(repo, args)
+            print(json.dumps(result, indent=2))
+            return 0 if result["status"] == "qualified" else 2
         elif args.command == "launch":
             result = launch(
                 repo,

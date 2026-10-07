@@ -51,6 +51,7 @@ with the [Opus](docs/agent-workflow/REVIEW.md#claude-opus-5-access) and
 | Merge a reviewed PR and preserve its artifacts | [Human finishing procedure](docs/agent-workflow/FINISH.md) |
 | Run local or manual Actions review | [Independent review](docs/agent-workflow/REVIEW.md) |
 | Understand what makes a review coverage-qualified | [Coverage contract](docs/agent-workflow/COVERAGE.md) |
+| Select, register, log in and activate a reviewer provider | [Reviewer providers](docs/agent-workflow/PROVIDERS.md) |
 | Adopt in NICME | [Migration plan](docs/adoption/NICME.md) · [validation design](docs/adoption/NICME-VALIDATION.md) |
 | Adopt in SpiderML | [SpiderML adoption](docs/adoption/SpiderML.md) |
 | Understand changes from the PDF | [Requirement traceability](docs/agent-workflow/TRACEABILITY.md) |
