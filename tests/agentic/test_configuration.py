@@ -29,7 +29,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_shipped_configuration_is_schema_three_with_three_profiles(self):
         config = self.config()
         self.assertEqual(config["schema_version"], 3)
-        self.assertEqual(config["default_profile"], "astra-copilot")
+        self.assertEqual(config["default_profile"], "astra-claude")
         self.assertEqual(config["hosted_profile"], "astra-copilot")
         self.assertEqual(set(config["profiles"]), {"astra-claude", "astra-copilot", "fable-gpt"})
         self.assertIsNone(config["max_diff_bytes"])
