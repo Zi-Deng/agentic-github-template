@@ -540,6 +540,7 @@ def merge_preflight(repo, number, reviewed_sha, review_directory=None):
     # A COMMENT review for this head is not enough: the saved packet must be coverage-qualified
     # and its exact publication body must be the one published for this head.
     review.verified_published(repo, review_directory, number, reviewed_sha, pr["base"]["sha"])
+    reviewed_policy = review.verify_packet(review_directory)["review_policy"]
     # --required must fail closed if no required checks are configured.
     checks = json.loads(
         run(
@@ -566,6 +567,11 @@ def merge_preflight(repo, number, reviewed_sha, review_directory=None):
         raise WorkflowError("Head or base changed during preflight")
     return {
         "reviewed_sha": reviewed_sha,
+        "reviewer": {
+            "provider": reviewed_policy["provider"],
+            "model": reviewed_policy["model"],
+            "budget_exception": reviewed_policy["budget"].get("exception"),
+        },
         "human_checks": "Read every finding, resolve conversations, confirm domain evidence and approve the merge yourself.",
         "command": shlex.join(
             [

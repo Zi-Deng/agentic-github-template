@@ -359,6 +359,7 @@ def review_task(
     review_provider=None,
     review_model=None,
     review_effort=None,
+    review_exception=None,
 ):
     number = positive(number)
     store = TaskStore(repo)
@@ -373,7 +374,9 @@ def review_task(
         }
         previous = rounds[-1] if rounds else None
         same_head = previous is not None and all(previous.get(k) == v for k, v in binding.items())
-        overrides = any(value is not None for value in (review_provider, review_model, review_effort))
+        overrides = any(
+            value is not None for value in (review_provider, review_model, review_effort, review_exception)
+        )
         legacy_recovery = same_head and not fresh and not overrides and previous.get("review_policy") is None
         executor = state.get("executor")
         implementer = None
@@ -414,7 +417,9 @@ def review_task(
                 implementer=implementer,
                 allow_same_family=allow_same_family,
                 warn_same_family=False,
+                review_exception=review_exception,
             )
+            selection = independent.bind_selection(selection)
         if not legacy_recovery:
             binding["review_policy_digest"] = digest(selection["policy"])
             if same_head and not fresh and round_policy_digest(previous) != binding["review_policy_digest"]:
@@ -463,6 +468,7 @@ def review_task(
                 "reviewer_model": policy["model"],
                 "reviewer_effort": policy["effort"],
                 "reviewer_family": selection["reviewer_family"],
+                "budget_exception": policy["budget"].get("exception"),
                 "profile": selection["profile"],
                 "selection_sources": selection["sources"],
                 "overrides": selection["overrides"],
@@ -601,5 +607,6 @@ def dispatch(repo, args):
             args.review_provider,
             args.review_model,
             args.review_effort,
+            review_exception=review_policy.exception_from_args(args),
         )
     raise WorkflowError("Unknown pipeline operation")

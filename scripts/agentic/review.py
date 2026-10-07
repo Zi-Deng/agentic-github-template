@@ -62,7 +62,7 @@ PACKET_SCHEMA = 7
 SUPPORTED_SCHEMAS = {1, 5, PACKET_SCHEMA}
 COVERAGE_SCHEMAS = {5, PACKET_SCHEMA}
 PACKET_KINDS = {"single"}
-INSTALLED_REVIEWERS = ("copilot",)
+INSTALLED_REVIEWERS = ("copilot", "claude-code")
 
 
 def digest(path):
@@ -148,6 +148,26 @@ def current_pr(repo, number, head, base):
     return pr
 
 
+def bind_selection(selection):
+    """Bind a Claude selection to the current native login so the packet carries it."""
+    if selection["policy"]["provider"] != "claude-code":
+        return selection
+    import claude_native_auth
+
+    policy = claude_native_auth.bind(selection["policy"], root=selection.get("login_root"))
+    return {**selection, "policy": policy}
+
+
+def packet_login_root(repo, meta):
+    """The login store for a packet's profile, resolved on this machine at run time."""
+    from profiles import load_profiles, login_root_resolution
+
+    cfg = configuration(repo.root)
+    declared = load_profiles(cfg)["profiles"].get(meta.get("profile"))
+    reviewer = declared["reviewer"] if declared else {"backend": None}
+    return login_root_resolution(cfg, reviewer, "claude-code", repo)["login_root"]
+
+
 def prepare(
     repo,
     number,
@@ -163,6 +183,7 @@ def prepare(
     review_effort=None,
     allow_same_family=False,
     require_backend=None,
+    review_exception=None,
 ):
     number, issue_number, plan_comment = map(positive, (number, issue_number, plan_comment))
     cfg = configuration(repo.root)
@@ -177,6 +198,7 @@ def prepare(
             review_effort=review_effort,
             allow_same_family=allow_same_family,
             require_backend=require_backend,
+            review_exception=review_exception,
         )
     elif require_backend is not None and selection["policy"]["provider"] != require_backend:
         raise WorkflowError(f"This path requires a reviewer backend of {require_backend}")
@@ -184,9 +206,10 @@ def prepare(
     if policy["provider"] not in INSTALLED_REVIEWERS:
         raise WorkflowError(
             f"The {policy['provider']} reviewer adapter is not installed in this harness "
-            f"(profile {selection['profile']!r}; blocker claude_reviewer_adapter_not_installed); "
-            "select a profile with a copilot reviewer or pass --review-provider copilot"
+            f"(profile {selection['profile']!r}; blocker claude_reviewer_adapter_not_installed)"
         )
+    selection = bind_selection(selection)
+    policy = selection["policy"]
     pr = repo.pr(number)
     head, base = sha(pr["head"]["sha"]), sha(pr["base"]["sha"])
     if expected_head and head != sha(expected_head):
@@ -338,7 +361,9 @@ def prepare(
             "effort": policy["effort"],
             "family": family(policy["model"]),
             "max_ai_credits": policy["budget"].get("ai_credits"),
+            "max_estimated_usd": policy["budget"].get("estimated_usd"),
             "timeout_seconds": policy["budget"]["timeout_seconds"],
+            "budget_exception": policy["budget"].get("exception"),
         },
         "config": cfg,
     }
@@ -542,13 +567,32 @@ def review(repo, directory):
         # replace a journal or already-captured attempt with a generic failure.
         directory = plain_path(directory)
         if not (directory / "diagnostics.json").exists() and (directory / "packet/capability.json").is_file():
-            _, diagnostics = coverage.parse_events(
-                "",
-                directory / "packet",
-                directory / "packet",
-                exit_code=None,
-                failure="preflight_or_storage_failure",
-            )
+            meta = coverage.read_json(directory / "metadata.json")
+            policy = meta.get("review_policy") if isinstance(meta, dict) else None
+            if (
+                isinstance(policy, dict)
+                and policy.get("provider") == "claude-code"
+                and policy.get("adapter") == coverage.CLAUDE_ADAPTER
+            ):
+                import claude_telemetry
+
+                _, diagnostics = claude_telemetry.capture(
+                    b"",
+                    directory / "packet",
+                    directory / "packet",
+                    policy,
+                    "",
+                    exit_code=None,
+                    failure="preflight_or_storage_failure",
+                )
+            else:
+                _, diagnostics = coverage.parse_events(
+                    "",
+                    directory / "packet",
+                    directory / "packet",
+                    exit_code=None,
+                    failure="preflight_or_storage_failure",
+                )
             atomic_json(directory / "diagnostics.json", diagnostics)
         raise
 
@@ -574,9 +618,14 @@ def run_review(repo, directory):
             f"The {provider} reviewer adapter is not installed in this harness "
             "(blocker claude_reviewer_adapter_not_installed)"
         )
-    from review_copilot import execute
+    if provider == "copilot":
+        from review_copilot import execute
 
-    body, diagnostics, version = execute(repo, directory, meta)
+        body, diagnostics, version = execute(repo, directory, meta)
+    else:
+        from review_claude import execute
+
+        body, diagnostics, version = execute(repo, directory, meta, login_root=packet_login_root(repo, meta))
     # Save sanitized diagnostics on failure too. Provider homes and raw stdout /
     # stderr are discarded; only exact final model output survives separately.
     if body.strip():
@@ -607,6 +656,20 @@ def run_review(repo, directory):
 PROVIDER_LABELS = {"copilot": "Copilot CLI", "claude-code": "Claude Code"}
 
 
+def exception_line(policy):
+    """The recorded budget exception, bound into the published bytes."""
+    limits = policy["budget"]
+    exception = limits.get("exception")
+    if not exception:
+        return ""
+    reason = " ".join(exception["reason"].split())
+    return (
+        f"Budget exception: timeout `{limits['timeout_seconds']} s`, reference ceiling "
+        f"`${limits['estimated_usd']}` (policy defaults {exception['default_timeout_seconds']} s / "
+        f"${exception['default_estimated_usd']}); reason: {reason}. "
+    )
+
+
 def publication_body(directory):
     meta = verify_packet(directory)
     body = (Path(directory) / "review.md").read_bytes().decode("utf-8")
@@ -625,7 +688,8 @@ def publication_body(directory):
     header = (
         f"## Independent {provider_label} review\n\nPR #{meta['pr']} · reviewed head `{meta['head_sha']}` "
         f"· base `{meta['base_sha']}`\n\nRequested model: `{meta['requested_model']}`. "
-        f"Status: **{label}**. Model output below is preserved exactly. "
+        + exception_line(meta["review_policy"])
+        + f"Status: **{label}**. Model output below is preserved exactly. "
         "This is not human approval. The reviewer executed no tests. CI association and tested checkout "
         "are separately recorded in validation.json; unknown execution details remain unknown.\n\n"
     )
@@ -753,6 +817,7 @@ def main():
                 review_effort=args.review_effort,
                 allow_same_family=args.allow_same_family,
                 require_backend=args.require_reviewer_backend,
+                review_exception=review_policy.exception_from_args(args),
             )
         elif args.command == "run":
             result = review(repo, args.directory)

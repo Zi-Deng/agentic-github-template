@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import datetime as dt
+import math
 import re
 from urllib.parse import urlsplit
 
@@ -61,8 +63,11 @@ PROVIDERS = {
 EXTENSION_SCHEMAS = {2, 3}
 # A per-call, reason-bearing budget exception may raise a Claude review above the policy
 # defaults (900 s, $10 reference) up to these ceilings; never a configured default.
+DEFAULT_TIMEOUT_SECONDS = 900
+DEFAULT_ESTIMATED_USD = 10
 EXCEPTION_MAX_TIMEOUT_SECONDS = 7200
 EXCEPTION_MAX_ESTIMATED_USD = 60
+EXCEPTION_KEYS = {"timeout_seconds", "estimated_usd", "reason", "recorded_at"}
 
 
 def model_extensions(cfg):
@@ -174,10 +179,65 @@ def choices(provider, model=None, effort=None, *, cfg=None):
     return {"provider": provider, "model": model, "effort": effort}
 
 
-def budget(provider, cfg, *, diagnostic=False):
+def validate_exception(value):
+    """A per-call budget exception: both limits, a reason and the time it was recorded."""
+    if not isinstance(value, dict) or set(value) != EXCEPTION_KEYS:
+        raise WorkflowError("A budget exception needs timeout_seconds, estimated_usd, reason and recorded_at")
+    timeout, amount = value["timeout_seconds"], value["estimated_usd"]
+    reason, recorded = value["reason"], value["recorded_at"]
+    if type(timeout) is not int or not DEFAULT_TIMEOUT_SECONDS <= timeout <= EXCEPTION_MAX_TIMEOUT_SECONDS:
+        raise WorkflowError(
+            f"An exception timeout must be {DEFAULT_TIMEOUT_SECONDS}-{EXCEPTION_MAX_TIMEOUT_SECONDS} seconds"
+        )
+    if (
+        type(amount) not in {int, float}
+        or not math.isfinite(amount)
+        or not DEFAULT_ESTIMATED_USD <= amount <= EXCEPTION_MAX_ESTIMATED_USD
+    ):
+        raise WorkflowError(
+            f"An exception reference ceiling must be ${DEFAULT_ESTIMATED_USD}-${EXCEPTION_MAX_ESTIMATED_USD}"
+        )
+    if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
+        raise WorkflowError("A budget exception needs a recorded reason of 1-2000 characters")
+    if not isinstance(recorded, str) or not 0 < len(recorded) <= 64:
+        raise WorkflowError("A budget exception needs a recorded_at timestamp")
+    return dict(value)
+
+
+def exception_record(timeout_seconds, estimated_usd, reason):
+    return validate_exception(
+        {
+            "timeout_seconds": timeout_seconds,
+            "estimated_usd": estimated_usd,
+            "reason": reason,
+            "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
+        }
+    )
+
+
+def exception_from_args(args):
+    """The three exception flags are all-or-nothing; the record carries its own timestamp."""
+    values = (
+        getattr(args, "review_timeout_seconds", None),
+        getattr(args, "review_max_estimated_usd", None),
+        getattr(args, "review_exception_reason", None),
+    )
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise WorkflowError(
+            "A budget exception needs --review-timeout-seconds, --review-max-estimated-usd "
+            "and --review-exception-reason together"
+        )
+    return exception_record(*values)
+
+
+def budget(provider, cfg, *, diagnostic=False, exception=None):
     if diagnostic:
         if provider != "claude-code":
             raise WorkflowError("Activation diagnostics are Claude-only")
+        if exception is not None:
+            raise WorkflowError("Activation diagnostics never carry a budget exception")
         return {
             "schema_version": 1,
             "kind": "reference-usd",
@@ -185,27 +245,48 @@ def budget(provider, cfg, *, diagnostic=False):
             "estimated_usd": 2,
             "extra_spend_authorized_usd": 0,
         }
-    timeout = cfg.get("review_timeout_seconds", 900)
-    if type(timeout) is not int or not 0 < timeout <= 900:
-        raise WorkflowError("Reviewer timeout must be at most 900 seconds")
+    timeout = cfg.get("review_timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
+    if type(timeout) is not int or not 0 < timeout <= DEFAULT_TIMEOUT_SECONDS:
+        raise WorkflowError(f"Reviewer timeout must be at most {DEFAULT_TIMEOUT_SECONDS} seconds")
     if provider == "copilot":
+        if exception is not None:
+            raise WorkflowError("Budget exceptions apply to the Claude Code reviewer only")
         amount = cfg.get("review_max_ai_credits", 400)
         if type(amount) is not int or amount <= 0:
             raise WorkflowError("Invalid Copilot credit budget")
         return {"schema_version": 1, "kind": "ai-credits", "timeout_seconds": timeout, "ai_credits": amount}
-    amount = cfg.get("review_max_estimated_usd", 10)
-    if type(amount) not in {int, float} or not 0 < amount <= 10:
-        raise WorkflowError("Claude reference-cost ceiling must be positive and at most $10")
-    return {
+    amount = cfg.get("review_max_estimated_usd", DEFAULT_ESTIMATED_USD)
+    if type(amount) not in {int, float} or not 0 < amount <= DEFAULT_ESTIMATED_USD:
+        raise WorkflowError(
+            f"Claude reference-cost ceiling must be positive and at most ${DEFAULT_ESTIMATED_USD}"
+        )
+    result = {
         "schema_version": 1,
         "kind": "reference-usd",
         "timeout_seconds": timeout,
         "estimated_usd": amount,
         "extra_spend_authorized_usd": 0,
     }
+    if exception is not None:
+        # A recorded exception only raises the two limits for this one policy; the
+        # configured defaults stay inside the record so every policy digest covers it.
+        exception = validate_exception(exception)
+        if exception["timeout_seconds"] < timeout or exception["estimated_usd"] < amount:
+            raise WorkflowError("A budget exception can only raise the configured limits")
+        result.update(
+            timeout_seconds=exception["timeout_seconds"],
+            estimated_usd=exception["estimated_usd"],
+            exception={
+                "reason": exception["reason"],
+                "default_timeout_seconds": timeout,
+                "default_estimated_usd": amount,
+                "recorded_at": exception["recorded_at"],
+            },
+        )
+    return result
 
 
-def policy(selection, cfg, *, diagnostic=False):
+def policy(selection, cfg, *, diagnostic=False, exception=None):
     selected = choices(**selection, cfg=cfg)
     spec = PROVIDERS[selected["provider"]]
     value = {
@@ -214,7 +295,7 @@ def policy(selection, cfg, *, diagnostic=False):
         "cli": copy.deepcopy(spec["cli"]),
         "adapter": spec["adapter"],
         "billing_mode": spec["billing_mode"],
-        "budget": budget(selected["provider"], cfg, diagnostic=diagnostic),
+        "budget": budget(selected["provider"], cfg, diagnostic=diagnostic, exception=exception),
     }
     extension = model_extensions(cfg).get((selected["provider"], selected["model"]))
     if extension is not None:
@@ -249,7 +330,31 @@ def validate_policy(value):
             "review_max_estimated_usd": limits.get("estimated_usd"),
         }
     )
-    expected = policy(selected, cfg)
+    exception = None
+    if "exception" in limits:
+        recorded = limits["exception"]
+        if not isinstance(recorded, dict) or set(recorded) != {
+            "reason",
+            "default_timeout_seconds",
+            "default_estimated_usd",
+            "recorded_at",
+        }:
+            raise WorkflowError("Unsupported budget exception record")
+        cfg.update(
+            {
+                "review_timeout_seconds": recorded["default_timeout_seconds"],
+                "review_max_estimated_usd": recorded["default_estimated_usd"],
+            }
+        )
+        exception = validate_exception(
+            {
+                "timeout_seconds": limits.get("timeout_seconds"),
+                "estimated_usd": limits.get("estimated_usd"),
+                "reason": recorded["reason"],
+                "recorded_at": recorded["recorded_at"],
+            }
+        )
+    expected = policy(selected, cfg, exception=exception)
     if "authentication" in value:
         if selected["provider"] != "claude-code":
             raise WorkflowError("Native authentication cannot bind a different provider")
@@ -270,6 +375,14 @@ def validate_policy(value):
 def add_arguments(parser):
     for field in ("provider", "model", "effort"):
         parser.add_argument("--review-" + field)
+    exception = parser.add_argument_group(
+        "budget exception",
+        "All three together: raise the Claude review limits for this one request "
+        f"(at most {EXCEPTION_MAX_TIMEOUT_SECONDS} s and ${EXCEPTION_MAX_ESTIMATED_USD} reference), recorded in the policy",
+    )
+    exception.add_argument("--review-timeout-seconds", type=int)
+    exception.add_argument("--review-max-estimated-usd", type=float)
+    exception.add_argument("--review-exception-reason")
 
 
 def status(repo, cfg, selection):

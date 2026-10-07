@@ -568,6 +568,7 @@ def review_selection(
     allow_same_family=False,
     require_backend=None,
     warn_same_family=True,
+    review_exception=None,
 ):
     """Resolve the active profile plus explicit per-call overrides into an immutable review policy."""
     cfg = configuration(repo.root) if cfg is None else cfg
@@ -594,7 +595,9 @@ def review_selection(
             f"This path requires a reviewer backend of {require_backend}; profile {profile['name']!r} "
             f"resolves to {selected['provider']}"
         )
-    policy = review_policy.policy(selected, effective_budget_config(cfg, reviewer, selected["provider"]))
+    policy = review_policy.policy(
+        selected, effective_budget_config(cfg, reviewer, selected["provider"]), exception=review_exception
+    )
     reviewer_family = family(policy["model"])
     if implementer is None:
         declared = profile["implementer"]

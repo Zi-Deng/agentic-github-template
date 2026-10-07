@@ -18,8 +18,11 @@ from workflow import WorkflowError
 
 SCHEMA = 2
 ADAPTER = "copilot-session-events-v2"
-# Diagnostics schema per installed adapter; the Claude Code adapter registers its own entry.
-DIAGNOSTIC_SCHEMAS = {ADAPTER: SCHEMA}
+CLAUDE_ADAPTER = "claude-stream-json-2.1.282-v6"
+CLAUDE_SCHEMA = 8
+# Diagnostics schema per installed adapter. claude_telemetry imports this module, so the
+# Claude Code adapter is registered here rather than from the adapter itself.
+DIAGNOSTIC_SCHEMAS = {ADAPTER: SCHEMA, CLAUDE_ADAPTER: CLAUDE_SCHEMA}
 MAX_EVENTS = 20000
 MAX_TOOL_RECORDS = 4000
 MAX_STREAM_BYTES = 16000000
@@ -610,11 +613,14 @@ def validate_diagnostics(diagnostics, packet, policy=None):
         )
     ):
         raise WorkflowError("Invalid diagnostic fields")
-    if policy and policy["provider"] != "copilot":
+    if policy and policy["provider"] == "claude-code":
+        from claude_telemetry import validate_summary
+    elif policy and policy["provider"] != "copilot":
         raise WorkflowError(
             f"Diagnostics for provider {policy['provider']!r} need an adapter this harness does not ship"
         )
-    from review_telemetry import validate_summary
+    else:
+        from review_telemetry import validate_summary
 
     validate_summary(diagnostics["telemetry"])
     if policy and diagnostics["cli_version"] != policy["cli"]["version"]:

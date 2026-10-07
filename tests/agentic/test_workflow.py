@@ -15,6 +15,7 @@ from unittest.mock import PropertyMock, patch
 
 SOURCE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SOURCE / "scripts/agentic"))
+import claude_native_auth  # noqa: E402
 import install  # noqa: E402
 import profiles  # noqa: E402
 import review  # noqa: E402
@@ -827,8 +828,11 @@ class ReviewTests(GitFixture):
         self.assertTrue(meta["provenance"]["same_family_acknowledged"])
         self.assertEqual(meta["provenance"]["profile"], "astra-copilot")
         with patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}):
-            with self.assertRaisesRegex(workflow.WorkflowError, "claude_reviewer_adapter_not_installed"):
-                review.prepare(self.repo, 31, 12, 1234)
+            # The Claude adapter is installed; without a registered native login the
+            # packet cannot be bound, so preparation fails closed before any request.
+            with patch.object(claude_native_auth, "default_root", return_value=self.parent / "no-login"):
+                with self.assertRaisesRegex(workflow.WorkflowError, "native Max registration"):
+                    review.prepare(self.repo, 31, 12, 1234)
             with self.assertRaisesRegex(workflow.WorkflowError, "requires a reviewer backend of copilot"):
                 review.prepare(self.repo, 31, 12, 1234, require_backend="copilot")
             switched = review.prepare(

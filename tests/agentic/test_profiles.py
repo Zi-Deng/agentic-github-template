@@ -12,6 +12,7 @@ from test_workflow import GitFixture, workflow
 
 # The shared fixture establishes the scripts import path.
 # isort: split
+import claude_native_auth
 import profiles
 import review_policy
 
@@ -440,10 +441,19 @@ class ProfileTests(GitFixture):
         copilot = review_policy.status(self.repo, self.cfg, profiles.review_selection(self.repo))
         self.assertEqual(copilot["activation_blockers"], ["verified_pinned_cli_unavailable"])
         self.assertIn("claude-opus-5", copilot["supported_models"])
-        with patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}):
+        with (
+            patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}),
+            patch.object(claude_native_auth, "default_root", return_value=self.parent / "no-login"),
+        ):
             native = review_policy.status(self.repo, self.cfg, profiles.review_selection(self.repo))
-        self.assertIn("claude_reviewer_adapter_not_installed", native["activation_blockers"])
-        self.assertIn("verified_pinned_cli_unavailable", native["activation_blockers"])
+        self.assertNotIn("claude_reviewer_adapter_not_installed", native["activation_blockers"])
+        for blocker in (
+            "verified_pinned_cli_unavailable",
+            "guarded_native_login_and_current_account_bound_receipt_required",
+            "matching_native_capability_diagnostic_unavailable",
+        ):
+            self.assertIn(blocker, native["activation_blockers"])
+        self.assertEqual(native["native_authentication"]["mode"], claude_native_auth.MODE)
         self.assertEqual(native["model_compatibility_sources"]["claude-opus-5-5"], "built-in")
 
     def test_managed_executors_cannot_change_the_active_profile(self):
@@ -482,9 +492,17 @@ class ProfileTests(GitFixture):
         self.assertEqual(set(shown["tools"]), {"codex", "claude", "copilot"})
         self.assertEqual(shown["review_policy"]["policy"]["provider"], "copilot")
         self.assertIn("activation_blockers", shown["review_policy"])
-        with patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}):
+        with (
+            patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}),
+            patch.object(claude_native_auth, "default_root", return_value=self.parent / "no-login"),
+        ):
             native = profiles.show(self.repo)
-        self.assertIn("claude_reviewer_adapter_not_installed", native["review_policy"]["activation_blockers"])
+        self.assertIn(
+            "guarded_native_login_and_current_account_bound_receipt_required",
+            native["review_policy"]["activation_blockers"],
+        )
+        self.assertEqual(native["login_root_source"], "default")
+        self.assertEqual(native["login_root"], str(self.parent / "no-login"))
 
     def test_claude_login_probe_parses_json_and_fails_closed(self):
         outcomes = [
