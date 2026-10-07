@@ -54,8 +54,10 @@ author. Record that distinction when different accounts are deliberately used.
 Keep tokens in the environment or credential store, never `.agentic/config.json`.
 See [GitHub's Copilot authentication reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
 
-Each profile names its Copilot reviewer (`claude-opus-5` under `astra-claude`,
-`gpt-6-astra` under `fable-gpt`), with a 400-AI-credit review limit. Verify that the
+The Copilot-backed profiles name their reviewer (`claude-opus-5` under `astra-copilot`,
+`gpt-6-astra` under `fable-gpt`), with a 400-AI-credit review limit; the default
+`astra-claude` profile reviews through the native Claude Code binary on a dedicated Max
+login instead ([PROVIDERS.md](PROVIDERS.md)). Verify that the
 inference account can select every reviewer model you intend to use; access to one model
 does not establish access to another. Read the [Opus](REVIEW.md#claude-opus-5-access) and
 [GPT-6 Astra](REVIEW.md#gpt-6-astra-access) access guidance.
@@ -101,8 +103,8 @@ fail closed; nothing falls back silently.
 
 | Profile | Implementer | Backend | Reviewer | Default |
 | --- | --- | --- | --- | --- |
-| `astra-copilot` | `gpt-6-astra` | Codex CLI (`codex exec --json`, `exec resume UUID`) | Copilot CLI `claude-opus-5`, effort `default` | yes; also `hosted_profile` |
-| `astra-claude` | `gpt-6-astra` | Codex CLI | Claude Code native `claude-opus-5-5`, effort `medium`, included Max billing only | no |
+| `astra-claude` | `gpt-6-astra` | Codex CLI (`codex exec --json`, `exec resume UUID`) | Claude Code native `claude-opus-5-5`, effort `medium`, included Max billing only | yes |
+| `astra-copilot` | `gpt-6-astra` | Codex CLI | Copilot CLI `claude-opus-5`, effort `default` | no; `hosted_profile` |
 | `fable-gpt` | `claude-fable-5-1` | Claude Code (`claude -p`, `--resume UUID`) on your Claude subscription | Copilot CLI `gpt-6-astra` | no |
 
 A reviewer object names `backend` (`copilot` or `claude-code`), an exact `model` from the
@@ -115,12 +117,16 @@ never in configuration; an optional `cli_version` or `adapter` key fails closed 
 template's pin moves. The resolved selection is an immutable review policy recorded in
 every packet (`metadata.json` → `review_policy`); `profile show` prints it with the
 activation blockers that still stand (for example `verified_pinned_cli_unavailable` until
-`register-reviewer` runs, or `claude_reviewer_adapter_not_installed` until the native
-adapter ships). Other top-level keys: `hosted_profile` (the Copilot-backed profile the
-manual Actions workflow uses when its `profile` input is empty), `private_paths`
-(repository-relative prefixes excluded from review packets), `managed_max_prompt_bytes`
-(executor prompt budget, separate from the nullable `max_diff_bytes` review cap),
-`review_max_estimated_usd`, `review_model_extensions` and `claude_review_login_root`.
+`register-reviewer` runs, or the native login and activation blockers listed in
+[PROVIDERS.md](PROVIDERS.md)). Other top-level keys: `hosted_profile` (the Copilot-backed
+profile the manual Actions workflow uses when its `profile` input is empty),
+`private_paths` (repository-relative prefixes excluded from review packets),
+`source_roots` (implementation and test roots whose modules are grouped into source/test
+families for scopes and batch units; default `scripts/agentic` and `tests/agentic`),
+`managed_max_prompt_bytes` (executor prompt budget, separate from the nullable
+`max_diff_bytes` review cap), `review_max_estimated_usd`, `review_model_extensions` and
+`claude_review_login_root` (normally `null`; the per-machine override in
+`.agentic-local/claude-login-root.json` is the supported way to point at a login store).
 Schema 1 and both schema 2 dialects (this template's profiles, FLOW-DC's `openai_model`
 plus `review_*`) still load through shims that print the schema 3 equivalent.
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "default_profile": "astra-copilot",
+  "default_profile": "astra-claude",
   "hosted_profile": "astra-copilot",
   "profiles": {
     "astra-claude": {

@@ -180,10 +180,10 @@ Changing the workflow or its credentials is T4 work.
 
 ## Model selection and repair
 
-The reviewer comes from the active profile: Copilot `claude-opus-5` under `astra-copilot`,
-Copilot `gpt-6-astra` under `fable-gpt`, Claude Code native `claude-opus-5-5` under
-`astra-claude` (its adapter arrives in a later PR; until then preparation reports
-`claude_reviewer_adapter_not_installed` and runs nothing). Each review round freezes the
+The reviewer comes from the active profile: Claude Code native `claude-opus-5-5` under
+`astra-claude` (the default; dedicated Max login, 900 s / $10 reference per request unless
+a recorded exception raises it, see [PROVIDERS.md](PROVIDERS.md)), Copilot `claude-opus-5`
+under `astra-copilot`, Copilot `gpt-6-astra` under `fable-gpt`. Each review round freezes the
 resolved policy (provider, exact model, effort, CLI pin, budget) into its record and packet
 metadata; a profile switch afterwards changes only future rounds. Explicit per-call
 `--review-provider`, `--review-model` and `--review-effort` flags on `review.py prepare`

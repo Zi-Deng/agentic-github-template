@@ -132,11 +132,14 @@ inventory and require a fresh complete packet. Unsupported prior data fails expl
 
 ## Provider adapters and capability probe
 
-This harness ships one reviewer adapter, `copilot-session-events-v2`, for the pinned
-Copilot CLI. A profile whose reviewer backend is `claude-code` resolves and records its
-policy, but preparation refuses it with the blocker `claude_reviewer_adapter_not_installed`
-until the native Claude Code adapter ships; its evidence rules are documented with that
-adapter. Synthetic fixtures and static binary inspection never establish live capability.
+This harness ships two reviewer adapters: `copilot-session-events-v2` for the pinned
+Copilot CLI and `claude-stream-json-2.1.282-v6` (diagnostics schema 8) for the pinned
+native Claude Code binary. Both credit source only from literal tool results against the
+packet's own line inventory; the Claude adapter additionally enforces the stream's
+`system/init` controls and the diagnostic refusal canary described in
+[PROVIDERS.md](PROVIDERS.md). Synthetic fixtures and static binary inspection never
+establish live capability; the Claude reviewer must first qualify two activation
+diagnostics on this machine.
 
 The pinned Copilot CLI is 1.0.83, defined with its archive digest in
 `scripts/agentic/copilot_policy.py`. Installer, invocation and current assessment share

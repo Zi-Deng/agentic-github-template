@@ -182,3 +182,28 @@ detached auto-maintenance surfaced the fixture race). GitHub's status API was us
 attribute the 2026-10-05 Actions outage. FLOW-DC's live evidence for its Copilot coverage
 gate was two schema-3 packets, neither qualified, so the gate's first qualified live run
 is expected in this template.
+
+## Native Claude reviewer port and the final-review exception — 2026-10-07
+
+Sources read in full on 2026-10-07: FLOW-DC main `8271616` (`claude_native_auth.py`,
+`review_claude.py`, `claude_telemetry.py` and its frozen versions, `claude_refusal_v6.py`,
+`diagnostic_tool_contract.py`, `review_diagnostics.py`, their tests and fixtures, the
+provider guide) and the local FLOW-DC object `c303c46` (bounded review units; FLOW-DC's
+PR #32 was open at `eea237a`, so the exact ported revision is pinned here). The live
+state of FLOW-DC's dedicated login store (registration schema 2, pinned 2.1.282, paid
+usage disabled) was inspected without reading credentials. Decisions:
+
+| Decision | Rationale |
+| --- | --- |
+| One branch, staged commits, no per-stage Copilot review; one native Claude review of the whole update under a recorded exception (maintainer decision 2026-10-07) | The maintainer wants the Max-plan reviewer, not Copilot; the exception is explicit, bounded (7200 s / $60) and recorded in the policy, never a default |
+| Reuse FLOW-DC's dedicated Max login store through the ignored per-machine override `.agentic-local/claude-login-root.json`; the committed configuration never names a store | One human login per machine; the override is private state like the profile selection |
+| A same-registration renewal keeps diagnostic lineage automatically (FLOW-DC required an explicit `--retain-capability`) | Renewal already re-verifies the account; access tokens last about eight hours, so re-running diagnostics after every renewal would spend requests without new evidence |
+| Byte-offset source audits of the binary are not ported; identity rests on the signed manifest pin plus runtime `--version`, `--help`, settings and `system/init` checks | Offsets are release-specific and unverifiable by readers; the signed pin and runtime enforcement carry the guarantee |
+| Telemetry adapter v6 only, with the frozen validators inlined; FLOW-DC's issue-33 grant model and recovery modules replaced by a generic activation ledger keyed by a binding digest | The template has no FLOW-DC history to recover; the digest states exactly what a diagnostic proved |
+| Batch units become schema-7 kinds `batch-parent`/`batch-unit`, plan version 7, with hard-coded workflow paths replaced by the `source_roots` configuration key; plan 5, schema 4 and the issue-31 frozen modules are not ported | Generic for adopting projects; history belongs to FLOW-DC |
+| Diagnostic packets use inventory schema 1 | They carry no source snapshot to bind ranges to; schema 2/3 binding applies to PR packets |
+| The default profile flips to `astra-claude` inside the reviewed update; the hosted workflow keeps `astra-copilot` | The flip is reviewed by the reviewer it enables; Actions has no Max login |
+
+Versions: Claude Code reviewer pinned 2.1.282 (binary SHA-256 `3afe8535…`, manifest
+`041abb14…`, fingerprint `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE`); the locally installed
+`claude` 2.1.290 is never used for review. Node 24.21.0 locally and 24 on the runner.

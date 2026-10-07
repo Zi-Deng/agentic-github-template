@@ -55,6 +55,13 @@ class GitFixture(unittest.TestCase):
         for item in [".agentic", ".github/agents", "docs/agent-workflow"]:
             if (SOURCE / item).exists():
                 shutil.copytree(SOURCE / item, self.root / item)
+        # The fixture's mocked provider is the Copilot session-event stream, so the fixture
+        # repository pins the Copilot-backed profile; the shipped default (astra-claude) is
+        # asserted by test_profiles and check_repository, and Claude tests select it explicitly.
+        config_path = self.root / ".agentic/config.json"
+        fixture_config = json.loads(config_path.read_text(encoding="utf-8"))
+        fixture_config["default_profile"] = "astra-copilot"
+        config_path.write_text(json.dumps(fixture_config, indent=2) + "\n", encoding="utf-8")
         shutil.copyfile(SOURCE / "AGENTS.md", self.root / "AGENTS.md")
         # Minimal policy text keeps this fixture independent of documentation wording.
         for name in ["REVIEW.md", "domain-review.md"]:

@@ -27,8 +27,8 @@ flowchart LR
 
 | Profile | Implementer (draft, plan, implement, repair) | Independent reviewer | Default |
 | --- | --- | --- | --- |
-| `astra-copilot` | Codex CLI, `gpt-6-astra`, ChatGPT account | Copilot CLI, `claude-opus-5` | yes (also the hosted Actions profile) |
-| `astra-claude` | Codex CLI, `gpt-6-astra`, ChatGPT account | Claude Code native, `claude-opus-5-5`, effort `medium` (adapter ships in a later PR; selecting it today reports `claude_reviewer_adapter_not_installed`) | no |
+| `astra-claude` | Codex CLI, `gpt-6-astra`, ChatGPT account | Claude Code native, `claude-opus-5-5`, effort `medium`, included Max billing only (dedicated login and two activation diagnostics; see [PROVIDERS.md](docs/agent-workflow/PROVIDERS.md)) | yes |
+| `astra-copilot` | Codex CLI, `gpt-6-astra`, ChatGPT account | Copilot CLI, `claude-opus-5` | no (the hosted Actions profile) |
 | `fable-gpt` | Claude Code, `claude-fable-5-1`, Claude subscription | Copilot CLI, `gpt-6-astra` | no |
 
 `python3 scripts/agentic/workflow.py profile use fable-gpt` switches this checkout through

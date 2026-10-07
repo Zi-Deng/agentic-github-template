@@ -29,7 +29,7 @@ the template and identifies deliberate adaptations.
 | 8.3–8.4. Provenance and large artifacts | Hash/timing/exit-status manifest; artifact policy | Artifact freshness and scientific design still require inspection |
 | 9. Validation tiers | V0–V4 ladder; CI; project CPU rollout plans | No GPU or costly campaign automatically triggered by PRs |
 | 10. Security/governance | Read-only CI tokens; pinned actions; protected manual environments | No PR code execution in model job; tool controls are not an OS sandbox |
-| 11. Cost/context/WIP | Explicit profile policy (default `astra-copilot`; `astra-claude` and `fable-gpt` selectable), typed per-provider budgets and one bounded request per round; daily checklist | Cheaper or same-family pairings only after a deliberate policy change |
+| 11. Cost/context/WIP | Explicit profile policy (default `astra-claude`: native Claude Code on included Max billing; `astra-copilot` and `fable-gpt` selectable), typed per-provider budgets, one bounded request per round or an explicit bounded batch, a recorded per-call exception for one large request; daily checklist | Cheaper or same-family pairings only after a deliberate policy change; an exception never becomes a default |
 | 12. Failure modes | Negative regression tests; recovery guidance | Preserves dirty worktrees, ignored outputs and post-merge commits |
 | 13. Daily checklist | Operating guide daily rhythm | Durable artifacts rather than dependence on a private chat |
 | Appendix A | Required issue form | Retains all contract dimensions and adds budget/stop conditions |

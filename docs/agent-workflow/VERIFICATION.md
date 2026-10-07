@@ -446,3 +446,47 @@ and the documented maintainer-decision merge.
 - Pre-gate rounds that predate A2 (schema-1 packets) remain publishable and byte-verifiable
   but cannot be designated or finished; every finish from now on needs a coverage-qualified
   round and `merge-preflight --review-directory`.
+
+## Native Claude reviewer, batch units and the `astra-claude` default — 2026-10-07
+
+Contract: [issue #22](https://github.com/Zi-Deng/agentic-github-template/issues/22)
+(plan comment 6036183554, approved 2026-10-07) /
+[PR #23](https://github.com/Zi-Deng/agentic-github-template/pull/23). The maintainer
+decided on 2026-10-07 to implement the remaining stages (B1, B2, B3, C1, C2, D) as staged
+commits on one branch without per-stage Copilot reviews, and to review the whole update
+once with the native Claude reviewer under a recorded budget exception of at most 7200 s
+and $60 reference cost. The coordinating Claude Code session (`claude-fable-5-1`)
+implemented every stage directly under the maintainer's standing exception. Sources:
+FLOW-DC main `8271616` for the native adapter, login store and diagnostics; the local
+FLOW-DC object `c303c46` (its unmerged bounded-batch branch) for the batch units.
+
+### Local evidence
+
+- Regression suite on CPython 3.12.3 (`.agentic-local/validation-venv`): 315 tests on the
+  branch base (main `39fb89a` plus PR #21's three commits), 339 after B1 (`7a2a324`),
+  398 after B2 (`e0a8fab`), 405 after B3 (`931db1a`), 477 after C1+C2 (`d1ec225`) and 478
+  after D. Four Node-dependent fixture tests run only where `node` is available (locally
+  24.21.0 and on the hosted runner). Every head was gated by `make check` and
+  `make check-clean`; no test invokes the real `claude` or `copilot` binaries, and every
+  native stream is a synthetic fixture.
+- Hosted CI (`ci` and `agentic workflow tests`) passed on `7a2a324`
+  (37610309047, 37610309171), `e0a8fab` (37611077061, 37611076958) and `931db1a`
+  (37611945973, 37611945991); the C1+C2 and D heads are recorded in the PR.
+- `check_repository.py` now also refuses a committed login path and a default profile
+  whose reviewer adapter is not installed.
+- The test fixture repository pins `default_profile` to `astra-copilot` because its mocked
+  provider is the Copilot session-event stream; the shipped default is asserted
+  separately (`test_shipped_default_is_the_native_claude_profile_and_the_fixture_pins_copilot`).
+
+### What the synthetic suite does not establish
+
+- Live native capability. Activation needs two qualified diagnostics on the reviewing
+  machine (`diagnose-claude`), each a real request; synthetic fixtures never qualify.
+- A live batch. Batch planning, reservations, publication and recovery are unit-tested;
+  no batch has run against a provider in this template.
+- The reviewed head's readiness. The final native review is recorded below once run.
+
+### Final native review of PR #23
+
+Pending at the time of this commit; the result (head, exception record, status, usage,
+duration, findings and repairs) is appended here before the maintainer's merge decision.

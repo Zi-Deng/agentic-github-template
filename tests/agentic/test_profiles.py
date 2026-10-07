@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from test_workflow import GitFixture, workflow
+from test_workflow import SOURCE, GitFixture, workflow
 
 # The shared fixture establishes the scripts import path.
 # isort: split
@@ -455,6 +455,13 @@ class ProfileTests(GitFixture):
             self.assertIn(blocker, native["activation_blockers"])
         self.assertEqual(native["native_authentication"]["mode"], claude_native_auth.MODE)
         self.assertEqual(native["model_compatibility_sources"]["claude-opus-5-5"], "built-in")
+
+    def test_shipped_default_is_the_native_claude_profile_and_the_fixture_pins_copilot(self):
+        shipped = profiles.load_profiles(workflow.configuration(SOURCE))
+        self.assertEqual(shipped["default_profile"], "astra-claude")
+        self.assertEqual(shipped["profiles"]["astra-claude"]["reviewer"]["backend"], "claude-code")
+        self.assertEqual(shipped["hosted_profile"], "astra-copilot")
+        self.assertEqual(profiles.load_profiles(self.cfg)["default_profile"], "astra-copilot")
 
     def test_managed_executors_cannot_change_the_active_profile(self):
         with patch.dict(os.environ, {"AGENTIC_EXECUTOR_ROLE": "implement"}):

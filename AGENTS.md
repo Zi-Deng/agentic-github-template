@@ -11,11 +11,11 @@ This repository implements the supplied issue-to-PR guide. Read
   bootstrap is authorized in the main directory before a remote baseline exists.
 - Preserve user edits. Never weaken tests or acceptance criteria to obtain a pass.
 - Draft, plan, implement, and repair with the implementer of the active profile declared
-  in `.agentic/config.json` (`astra-copilot`, the default, and `astra-claude`: Codex
+  in `.agentic/config.json` (`astra-claude`, the default, and `astra-copilot`: Codex
   `gpt-6-astra`; `fable-gpt`: Claude Code `claude-fable-5-1`). Independent review uses that
-  profile's reviewer backend and exact model (Copilot CLI `claude-opus-5` or `gpt-6-astra`;
-  Claude Code native `claude-opus-5-5` once its adapter ships). Hosted Actions review is
-  Copilot-only through `hosted_profile`. Switching profiles is a recorded operator decision
+  profile's reviewer backend and exact model (Claude Code native `claude-opus-5-5` on the
+  dedicated Max login under `astra-claude`; Copilot CLI `claude-opus-5` or `gpt-6-astra`
+  otherwise). Hosted Actions review is Copilot-only through `hosted_profile`. Switching profiles is a recorded operator decision
   (`workflow.py profile use`); per-call `--review-provider/--review-model/--review-effort`
   overrides are recorded in the packet; cheaper models or same-family pairs require a
   deliberate policy change.

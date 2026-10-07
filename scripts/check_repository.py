@@ -87,6 +87,12 @@ def validate_configuration(root):
     assert hosted and declared["profiles"][hosted]["reviewer"]["backend"] == "copilot", (
         "hosted_profile must name a profile whose reviewer backend is copilot"
     )
+    import review
+
+    default = declared["profiles"][declared["default_profile"]]
+    assert default["reviewer"]["backend"] in review.INSTALLED_REVIEWERS, (
+        "default_profile must name a profile whose reviewer adapter this harness installs"
+    )
     # Native login stores are per machine: the committed configuration never names one.
     assert config["claude_review_login_root"] is None, (
         "Use the local claude-login-root override, not configuration"
