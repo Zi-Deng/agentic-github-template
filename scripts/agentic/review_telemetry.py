@@ -8,7 +8,9 @@ import json
 import os
 import re
 import stat
+from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 
 import review_coverage as coverage
 from workflow import WorkflowError
@@ -66,7 +68,7 @@ MAX_UNKNOWN_TYPES = 64
 
 
 def unknown_types(events):
-    """Only bounded digests of unknown names, never arbitrary provider strings."""
+    """At most MAX_UNKNOWN_TYPES digests plus one fixed overflow counter."""
     result = {}
     for event in events:
         if event["type"] not in KNOWN_TYPES:
@@ -75,6 +77,129 @@ def unknown_types(events):
                 key = "overflow"
             result[key] = result.get(key, 0) + 1
     return result
+
+
+# Pinned SDK WarningData has an open string category, not a benign-category enum.
+# See COVERAGE.md for source provenance. These labels are diagnostic examples only.
+WARNING_CATEGORIES = {"subscription", "policy", "mcp", "other", "missing_or_invalid"}
+WARNING_COUNTS = {
+    "count",
+    "data_object",
+    "warning_type_string",
+    "message_string",
+    "url_present",
+    "url_string",
+    "remediation_present",
+    "extra_fields",
+}
+
+
+def warning_summary(events):
+    """Fixed-size shape/category counters; never retain messages, URLs or arbitrary labels.
+
+    This projection grants no support/credit: warnings still pass through the existing
+    unsupported-event gates. Remediation contents are deliberately not inspected.
+    """
+    row = dict.fromkeys(sorted(WARNING_COUNTS), 0)
+    row["categories"] = dict.fromkeys(sorted(WARNING_CATEGORIES), 0)
+    for event in events:
+        if event["type"] != "session.warning":
+            continue
+        row["count"] += 1
+        data = event.get("data")
+        category = "missing_or_invalid"
+        if isinstance(data, dict):
+            row["data_object"] += 1
+            value = data.get("warningType")
+            row["warning_type_string"] += isinstance(value, str)
+            if isinstance(value, str) and value:
+                category = value if value in {"subscription", "policy", "mcp"} else "other"
+            row["message_string"] += isinstance(data.get("message"), str)
+            row["url_present"] += "url" in data
+            row["url_string"] += isinstance(data.get("url"), str)
+            row["remediation_present"] += "remediation" in data
+            row["extra_fields"] += bool(set(data) - {"warningType", "message", "url", "remediation"})
+        row["categories"][category] += 1
+    return row
+
+
+def validate_warnings(value):
+    if not isinstance(value, dict) or set(value) != {"stdout", "session"}:
+        raise WorkflowError("Invalid warning summary")
+    for row in value.values():
+        if not isinstance(row, dict) or set(row) != WARNING_COUNTS | {"categories"}:
+            raise WorkflowError("Unsafe warning summary")
+        counts = {key: row[key] for key in WARNING_COUNTS}
+        categories = row["categories"]
+        if (
+            any(type(n) is not int or not 0 <= n <= coverage.MAX_EVENTS for n in counts.values())
+            or any(n > row["count"] for n in counts.values())
+            or not isinstance(categories, dict)
+            or set(categories) != WARNING_CATEGORIES
+            or any(type(n) is not int or not 0 <= n <= row["count"] for n in categories.values())
+            or sum(categories.values()) != row["count"]
+            or row["url_string"] > row["url_present"]
+        ):
+            raise WorkflowError("Invalid warning counts")
+
+
+MANAGED_COUNTS = {
+    "count",
+    "root_ephemeral",
+    "data_object",
+    "known_source",
+    "source_none",
+    "indeterminate",
+    "settings_present",
+    "managed_keys_present",
+}
+
+
+def managed_settings_summary(events):
+    """Diagnostic-only projection of the pinned experimental policy snapshot.
+
+    No payload establishes benign policy here. Unsupported-event/isolation gates
+    remain unchanged, including for enforcement and indeterminate resolution.
+    """
+    row = dict.fromkeys(sorted(MANAGED_COUNTS), 0)
+    for event in events:
+        if event["type"] != "session.managed_settings_resolved":
+            continue
+        row["count"] += 1
+        row["root_ephemeral"] += event.get("ephemeral") is True and "agentId" not in event
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        row["data_object"] += 1
+        source = data.get("source")
+        row["known_source"] += isinstance(source, str) and source in {
+            "none",
+            "server",
+            "device",
+            "client",
+            "policyHelper",
+            "mixed",
+        }
+        row["source_none"] += source == "none"
+        row["indeterminate"] += (
+            data.get("failClosed") is True or data.get("sandboxEnabledByUndeterminedPolicy") is True
+        )
+        row["settings_present"] += "settings" in data
+        row["managed_keys_present"] += "managedKeys" in data
+    return row
+
+
+def validate_managed_settings(value):
+    if not isinstance(value, dict) or set(value) != {"stdout", "session"}:
+        raise WorkflowError("Invalid managed settings summary")
+    for row in value.values():
+        if (
+            not isinstance(row, dict)
+            or set(row) != MANAGED_COUNTS
+            or any(type(n) is not int or not 0 <= n <= coverage.MAX_EVENTS for n in row.values())
+            or any(n > row["count"] for n in row.values())
+        ):
+            raise WorkflowError("Unsafe managed settings summary")
 
 
 def session_events(state, session_id):
@@ -98,6 +223,51 @@ def session_events(state, session_id):
     return events
 
 
+def unmanaged_stdout_event(event):
+    """Pinned SDK live-only no-policy snapshot; never tool or inspection evidence."""
+    if set(event) != {"type", "ephemeral", "id", "parentId", "timestamp", "data"}:
+        return False
+    if event["type"] != "session.managed_settings_resolved" or event["ephemeral"] is not True:
+        return False
+    try:
+        for key in ("id", "parentId"):
+            value = event[key]
+            if key == "parentId" and value is None:
+                continue
+            if not isinstance(value, str) or UUID(value).version != 4:
+                return False
+        if not isinstance(event["id"], str) or not isinstance(event["timestamp"], str):
+            return False
+        if datetime.fromisoformat(event["timestamp"]).tzinfo is None:
+            return False
+    except ValueError:
+        return False
+    data = event["data"]
+    required = {
+        "source",
+        "failClosed",
+        "managedKeys",
+        "deviceManaged",
+        "serverManaged",
+        "bypassPermissionsDisabled",
+    }
+    optional = {
+        "clientManaged",
+        "policyHelperManaged",
+        "permissionsAllowIntersected",
+        "sandboxEnabledByUndeterminedPolicy",
+    }
+    return (
+        isinstance(data, dict)
+        and required <= data.keys() <= required | optional
+        and data["source"] == "none"
+        and data["managedKeys"] == []
+        and isinstance(data["bypassPermissionsDisabled"], bool)
+        and all(data[key] is False for key in {"failClosed", "deviceManaged", "serverManaged"})
+        and all(data[key] is False for key in optional & data.keys())
+    )
+
+
 def capture(stdout, state, session_id, packet, workspace, **kwargs):
     reasons, observed, framing = set(), [], []
     try:
@@ -110,11 +280,20 @@ def capture(stdout, state, session_id, packet, workspace, **kwargs):
     else:
         framing = terminals
     for event in observed:
-        kind, data = event["type"], event.get("data") or {}
+        kind, data = event["type"], event.get("data", {})
+        # Match the coverage parser's null bookkeeping compatibility, without
+        # defaulting malformed identity or tool payloads to empty objects.
+        if (
+            data is None
+            and kind in coverage.IGNORED_EVENTS | {"session.idle", "session.shutdown"}
+            and kind != "session.start"
+            and not kind.startswith("tool.")
+        ):
+            data = {}
         restriction = coverage.event_restriction(event)
         if restriction:
             reasons.add(restriction)
-        if kind not in KNOWN_TYPES or kind == "session.error":
+        if (kind not in KNOWN_TYPES or kind == "session.error") and not unmanaged_stdout_event(event):
             reasons.add("unsupported_stdout_event")
         if not isinstance(data, dict):
             reasons.add("malformed_stdout_framing")
@@ -146,16 +325,28 @@ def capture(stdout, state, session_id, packet, workspace, **kwargs):
         "session_shapes": shapes(events),
         "unknown_types": {"stdout": unknown_types(observed), "session": unknown_types(events)},
     }
+    warnings = {"stdout": warning_summary(observed), "session": warning_summary(events)}
+    # Optional additive diagnostics keep historical records and warning-free captures unchanged.
+    if any(row["count"] for row in warnings.values()):
+        diagnostics["telemetry"]["warnings"] = warnings
+    managed = {"stdout": managed_settings_summary(observed), "session": managed_settings_summary(events)}
+    if any(row["count"] for row in managed.values()):
+        diagnostics["telemetry"]["managed_settings"] = managed
     return report, diagnostics
 
 
 def validate_summary(value):
     if (
         not isinstance(value, dict)
-        or set(value) != {"source", "stdout_shapes", "session_shapes", "unknown_types"}
+        or set(value) - {"warnings", "managed_settings"}
+        != {"source", "stdout_shapes", "session_shapes", "unknown_types"}
         or value["source"] not in {"stdout", "session-state", "unavailable"}
     ):
         raise WorkflowError("Invalid telemetry summary")
+    if "managed_settings" in value:
+        validate_managed_settings(value["managed_settings"])
+    if "warnings" in value:
+        validate_warnings(value["warnings"])
     for name in ("stdout_shapes", "session_shapes"):
         rows = value[name]
         if not isinstance(rows, dict) or set(rows) - KNOWN_TYPES - {"unknown"}:

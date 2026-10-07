@@ -171,6 +171,8 @@ class Repo:
             yield
 
 
+# Implementation and test roots whose Python files are grouped into source/test families.
+DEFAULT_SOURCE_ROOTS = ("scripts/agentic", "tests/agentic")
 CONFIG_SCHEMAS = {1, 2, 3}
 
 
@@ -192,6 +194,7 @@ def configuration(root):
     result.setdefault("review_model_extensions", [])
     result.setdefault("claude_review_login_root", None)
     result.setdefault("private_paths", [])
+    result.setdefault("source_roots", list(DEFAULT_SOURCE_ROOTS))
     if result["schema_version"] == 3:
         result.setdefault("hosted_profile", None)
     for key in ("max_diff_bytes", "managed_max_prompt_bytes"):
@@ -225,6 +228,25 @@ def configuration(root):
         or ".." in Path(login_root).parts
     ):
         raise WorkflowError("claude_review_login_root must be null or an absolute path")
+    roots = result["source_roots"]
+    if (
+        not isinstance(roots, list)
+        or not 0 < len(roots) <= 32
+        or len(set(roots)) != len(roots)
+        or any(
+            not isinstance(item, str)
+            or not item
+            or len(item) > 200
+            or item.startswith("/")
+            or item.endswith("/")
+            or ".." in item.split("/")
+            or "\\" in item
+            for item in roots
+        )
+    ):
+        raise WorkflowError(
+            "source_roots must be a nonempty list of distinct relative directory prefixes (implementation and test roots)"
+        )
     prefixes = result["private_paths"]
     if (
         not isinstance(prefixes, list)

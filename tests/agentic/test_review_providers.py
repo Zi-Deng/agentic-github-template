@@ -166,7 +166,7 @@ class ProviderPolicyTests(GitFixture):
                 self.assertRaisesRegex(workflow.WorkflowError, "frozen adapters"),
             ):
                 review.verify_packet(directory)
-        review.atomic_json(directory / "metadata.json", {**meta, "kind": "batch-unit"})
+        review.atomic_json(directory / "metadata.json", {**meta, "kind": "historical"})
         with self.assertRaisesRegex(workflow.WorkflowError, "packet kind"):
             review.verify_packet(directory)
 

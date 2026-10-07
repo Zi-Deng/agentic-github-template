@@ -44,6 +44,7 @@
   "review_model_extensions": [],
   "claude_review_login_root": null,
   "private_paths": [],
+  "source_roots": ["scripts/agentic", "tests/agentic"],
   "managed_max_prompt_bytes": 300000,
   "max_diff_bytes": null,
   "max_source_file_bytes": 250000,

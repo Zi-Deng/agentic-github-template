@@ -88,6 +88,14 @@ head/base requires a new snapshot. Only a qualified published report is designat
 require that designation plus an exact match with the published body. Findings do not
 automatically become approval, a green required check, or resolved threads.
 
+A broad change that one request cannot cover may run as an explicit batch:
+`review.py batch-preview DIR` plans component and integration units without inference,
+`batch-run DIR` executes them sequentially under typed bounds and a named authorization,
+and `task-review ISSUE --batch` is the managed equivalent. Every unit performs the three
+probes and inspects its assigned IDs; the aggregate qualifies only when every unit,
+including integration, is complete. See
+[bounded batches](COVERAGE.md#provider-aware-bounded-batches).
+
 The review directory is private working state, not a cryptographic attestation against
 its own owner. Its hashes catch accidental edits. A user able to rewrite the manifest
 can rewrite the record, so GitHub permissions and human assessment remain necessary.
@@ -126,10 +134,14 @@ direction**. Use original repository paths and line numbers from the mapped sour
 not the numbered snapshot filenames. Demonstrate the reachable code path or provide
 a reproducible test proposal. Do not invent executed commands.
 
-The final response is one compact JSON object matching the packet's `report-schema.json`
+The final response is one bare JSON object matching the packet's `report-schema.json`
 (`schema_version: 2`, `inventory_sha256` copied from `inventory-sha256.txt`, `findings`,
 `reviewed` listing positively inspected required IDs, `incomplete` grouping specific
-unread or unsupported IDs with a reason, and `limitations`). Omitted IDs stay unread and
+unread or unsupported IDs with a reason, and `limitations`), with no introductory prose or
+Markdown fences; capability and scope notes belong inside `limitations`. Single-request
+prompts require the full inventory, batch unit prompts the assigned IDs. These are prompt
+constraints, not a guarantee of compliance: one complete outer `json` fence is still
+accepted without changing saved bytes, while surrounding prose stays malformed. Omitted IDs stay unread and
 block qualification; general limitations appear once. The wrapper credits a `reviewed`
 claim only when the literal tool results covered its complete range.
 

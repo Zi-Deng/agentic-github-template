@@ -299,10 +299,11 @@ def run(repo, cfg, selection, *, purpose=None, reason=None, login_root=None):
             packet / "review-policy.txt",
             "Static tools only. No execution, delegation, writes or network tools. This is not PR review.\n",
         )
+        # Inventory schema 1: the diagnostic packet has no source snapshot to bind ranges to.
         atomic_json(
             packet / "required-material.json",
             {
-                "schema_version": 2,
+                "schema_version": 1,
                 "required": [
                     {
                         "id": stable_id("diagnostic", "capability/fixture.txt", 1, 2),

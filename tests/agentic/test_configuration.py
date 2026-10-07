@@ -46,6 +46,7 @@ class ConfigurationTests(unittest.TestCase):
                 "review_model_extensions",
                 "claude_review_login_root",
                 "private_paths",
+                "source_roots",
             ]
         )
         self.assertIsNone(config["max_diff_bytes"])
@@ -54,6 +55,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(config["review_model_extensions"], [])
         self.assertIsNone(config["claude_review_login_root"])
         self.assertEqual(config["private_paths"], [])
+        self.assertEqual(config["source_roots"], ["scripts/agentic", "tests/agentic"])
 
     def test_schema_version_requires_a_supported_integer(self):
         for value in [None, True, "3", 0, 4, 5]:
