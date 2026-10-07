@@ -59,6 +59,10 @@ PROVIDERS = {
     },
 }
 EXTENSION_SCHEMAS = {2, 3}
+# A per-call, reason-bearing budget exception may raise a Claude review above the policy
+# defaults (900 s, $10 reference) up to these ceilings; never a configured default.
+EXCEPTION_MAX_TIMEOUT_SECONDS = 7200
+EXCEPTION_MAX_ESTIMATED_USD = 60
 
 
 def model_extensions(cfg):

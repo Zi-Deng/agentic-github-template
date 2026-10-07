@@ -435,13 +435,107 @@ def active_profile(repo, cfg=None, *, warn_same_family=True):
     return profile
 
 
-def login_root(cfg, reviewer, provider):
-    """The native login store for the selected provider: profile value, then configuration."""
-    if provider != "claude-code":
+LOGIN_ROOT_FILE = ".agentic-local/claude-login-root.json"
+
+
+def login_root_path(repo):
+    return plain_path(private_root(repo) / "claude-login-root.json")
+
+
+def local_login_root(repo):
+    """The per-machine native login-store override: ignored, untracked, operator-written."""
+    path = login_root_path(repo)
+    if not path.exists():
         return None
+    message = f"Local login-root override ({LOGIN_ROOT_FILE}) is malformed; run `workflow.py claude-login-root clear`"
+    if not path.is_file():
+        raise WorkflowError("Local login-root override is not a regular file")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise WorkflowError(message) from exc
+    if (
+        not isinstance(value, dict)
+        or value.get("schema_version") != 1
+        or not isinstance(value.get("login_root"), str)
+        or not isinstance(value.get("reason"), str)
+    ):
+        raise WorkflowError(message)
+    return {**value, "login_root": absolute_path(value["login_root"], "Local login-root override")}
+
+
+def login_root_resolution(cfg, reviewer, provider, repo=None):
+    """Where the native login store comes from: local override, profile, configuration, default.
+
+    ``login_root`` stays ``None`` for the built-in default so that ``claude_native_auth``
+    resolves it; ``effective_login_root`` names the directory that will actually be used.
+    """
+    if provider != "claude-code":
+        return {"login_root": None, "login_root_source": None}
+    local = local_login_root(repo) if repo is not None else None
+    if local:
+        return {"login_root": local["login_root"], "login_root_source": "local-file"}
     if reviewer["backend"] == "claude-code" and reviewer.get("login_root"):
-        return reviewer["login_root"]
-    return absolute_path(cfg.get("claude_review_login_root"), "claude_review_login_root")
+        return {"login_root": reviewer["login_root"], "login_root_source": "profile"}
+    configured = absolute_path(cfg.get("claude_review_login_root"), "claude_review_login_root")
+    if configured:
+        return {"login_root": configured, "login_root_source": "configuration"}
+    return {"login_root": None, "login_root_source": "default"}
+
+
+def login_root(cfg, reviewer, provider, repo=None):
+    """The native login store for the selected provider (``None`` means the built-in default)."""
+    return login_root_resolution(cfg, reviewer, provider, repo)["login_root"]
+
+
+def effective_login_root(value):
+    import claude_native_auth
+
+    return str(Path(value).expanduser() if value else claude_native_auth.default_root())
+
+
+def setup_login_root(repo, cfg=None):
+    """The store a human login or renewal registers into, independent of the active provider."""
+    cfg = configuration(repo.root) if cfg is None else cfg
+    profile = active_profile(repo, cfg, warn_same_family=False)
+    resolution = login_root_resolution(cfg, profile["reviewer"], "claude-code", repo)
+    return {**resolution, "effective_login_root": effective_login_root(resolution["login_root"])}
+
+
+def use_login_root(repo, path, reason):
+    if os.environ.get("AGENTIC_EXECUTOR_ROLE"):
+        raise WorkflowError("Managed executors must not change the native login root")
+    if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
+        raise WorkflowError("A recorded reason of 1-2000 characters is required")
+    if not isinstance(path, str) or not path.strip():
+        raise WorkflowError("Login root must be an absolute path")
+    record = {
+        "schema_version": 1,
+        "login_root": absolute_path(path, "Login root"),
+        "reason": reason,
+        "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
+    }
+    atomic_json(login_root_path(repo), record)
+    return record
+
+
+def clear_login_root(repo):
+    if os.environ.get("AGENTIC_EXECUTOR_ROLE"):
+        raise WorkflowError("Managed executors must not change the native login root")
+    path = login_root_path(repo)
+    existed = path.exists()
+    if existed:
+        path.unlink()
+    return {"cleared": existed, **setup_login_root(repo)}
+
+
+def show_login_root(repo):
+    local = local_login_root(repo)
+    return {
+        "local_file": str(login_root_path(repo)) if local else None,
+        "local_override": local,
+        **setup_login_root(repo),
+    }
 
 
 def effective_budget_config(cfg, reviewer, provider):
@@ -543,7 +637,7 @@ def review_selection(
             "same_family": same_family,
             "same_family_acknowledged": acknowledged if same_family else None,
         },
-        "login_root": login_root(cfg, reviewer, selected["provider"]),
+        **login_root_resolution(cfg, reviewer, selected["provider"], repo),
         "reviewer_family": reviewer_family,
     }
 
@@ -629,6 +723,10 @@ def show(repo, cfg=None):
     try:
         selection = review_selection(repo, cfg, warn_same_family=False)
         result["review_policy"] = review_policy.status(repo, cfg, selection)
+        result["login_root_source"] = selection["login_root_source"]
+        result["login_root"] = (
+            effective_login_root(selection["login_root"]) if selection["login_root_source"] else None
+        )
     except WorkflowError as exc:
         result["review_policy"] = {"error": str(exc)}
     return result
@@ -675,9 +773,55 @@ def add_commands(sub):
     use.add_argument("--allow-same-family", action="store_true")
     use.add_argument("--reason")
     actions.add_parser("clear")
+    login = sub.add_parser(
+        "claude-login-root",
+        help="Show, record or clear the per-machine native Claude login store override",
+    )
+    login_actions = login.add_subparsers(dest="login_root_command", required=True)
+    login_actions.add_parser("show")
+    use_root = login_actions.add_parser("use")
+    use_root.add_argument("path")
+    use_root.add_argument("--reason", required=True)
+    login_actions.add_parser("clear")
+    setup = sub.add_parser(
+        "claude-login-setup",
+        help="Register or renew the dedicated Max login for the native Claude reviewer (human, real terminal)",
+    )
+    setup.add_argument("--renew", action="store_true")
+    setup.add_argument("--paid-usage-disabled", action="store_true")
+
+
+def dispatch_login_root(repo, args):
+    if args.login_root_command == "show":
+        return show_login_root(repo)
+    if args.login_root_command == "use":
+        return use_login_root(repo, args.path, args.reason)
+    if args.login_root_command == "clear":
+        return clear_login_root(repo)
+    raise WorkflowError("Unknown login-root operation")
+
+
+def login_setup(repo, args):
+    """Human-only registration into the resolved store; nothing printed identifies the account."""
+    import claude_native_auth
+
+    resolution = setup_login_root(repo)
+    result = claude_native_auth.setup(
+        repo, root=resolution["login_root"], renew=args.renew, paid_usage_disabled=args.paid_usage_disabled
+    )
+    return {
+        **result,
+        "login_root": resolution["effective_login_root"],
+        "login_root_source": resolution["login_root_source"],
+        "renewed": bool(args.renew),
+    }
 
 
 def dispatch(repo, args):
+    if args.command == "claude-login-root":
+        return dispatch_login_root(repo, args)
+    if args.command == "claude-login-setup":
+        return login_setup(repo, args)
     if args.profile_command == "show":
         return show(repo)
     if args.profile_command == "list":

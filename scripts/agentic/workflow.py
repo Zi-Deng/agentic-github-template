@@ -745,7 +745,7 @@ def main():
                 and auth[backend] is True
             )
             return 0 if healthy else 1
-        if args.command == "profile":
+        if args.command in ("profile", "claude-login-root", "claude-login-setup"):
             result = dispatch_profile(repo, args)
         elif args.command == "sync-skills":
             from skills import sync as sync_skills
