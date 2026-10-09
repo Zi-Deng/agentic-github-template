@@ -515,3 +515,22 @@ makes the head unreviewed again; a `batch-preview` of the same packet plans 146 
 (145 components plus integration), so a full batch would be about 146 requests. The
 maintainer decides between a maintainer-decision merge, a further single request or a
 batch; this record does not claim the update was coverage-qualified.
+
+**Maintainer decision (2026-10-09).** After the repair (`c9dcd16`) and the merge of main
+`2d1ca5c` into the branch (`97be030`, every conflict byte-identical to the already carried
+PR #21 content; CI green on both heads), the maintainer merged PR #23 on their own judgment
+at 2026-10-09T07:43:12Z as squash `301c5fa`, the third path in [FINISH.md](FINISH.md#when-the-review-is-incomplete).
+Four finishing gates could not run and were not bypassed: (1) no designated review, since
+the only review of this PR is the INCOMPLETE one above; (2) no managed executor record,
+because the coordinating session implemented the update directly under the maintainer's
+standing exception; (3) the contract issue closed on merge, so `feedback` and
+`finish-prepare` refuse; (4) the PR was already merged by the maintainer, so the finishing
+script's merge and archive path had nothing to run on. The merged worktree held only
+regenerable caches, which were removed by literal path before the low-level
+`cleanup-task 23`. A manual finish assessment in the structure `finish-prepare`
+documents (merged head and base, review 5465964694 with disposition `fixed`, the six
+acceptance criteria with public evidence, real feedback and PR digests) and a provenance
+journal naming the gates that did not run are kept in the control clone's private
+`.agentic-local/archives/` directory; they are a maintainer record, not a tooling-validated
+finish. The merged main resolves `astra-claude` by default with no activation blockers on
+the reviewing machine.
