@@ -123,6 +123,30 @@ class BudgetExceptionTests(GitFixture):
                 self.repo, self.cfg, review_provider="copilot", review_exception=exception()
             )
 
+    def test_batch_units_never_inherit_the_exception(self):
+        parent = profiles.review_selection(self.repo, self.cfg, review_exception=exception())["policy"]
+        bounds = {
+            "requests": 3,
+            "kind": "reference-usd",
+            "cost": "30",
+            "seconds": 2700,
+            "unit_cost": "10",
+            "unit_seconds": 900,
+            "max_report_bytes": 50000,
+            "max_integration_bytes": 500000,
+        }
+        normalized, unit = review_policy.batch_budget(bounds, parent, 3)
+        self.assertNotIn("exception", unit["budget"])
+        self.assertEqual((unit["budget"]["timeout_seconds"], unit["budget"]["estimated_usd"]), (900, 10))
+        self.assertEqual(review_policy.validate_policy(unit), unit)
+        self.assertEqual(normalized["unit_cost"], "10")
+        for mutation in ({"unit_seconds": 901, "seconds": 2703}, {"unit_cost": "10.5", "cost": "31.5"}):
+            with (
+                self.subTest(mutation=mutation),
+                self.assertRaisesRegex(workflow.WorkflowError, "parent policy"),
+            ):
+                review_policy.batch_budget({**bounds, **mutation}, parent, 3)
+
     def test_packet_and_publication_carry_the_recorded_exception(self):
         self.commit_task()
         directory = review.prepare(self.repo, 31, 12, 1234, review_exception=exception(3600, 25))

@@ -80,7 +80,9 @@ the registration. Access tokens last about eight hours; `--renew` records a new
 generation of the same registration (the account must match) and keeps earlier
 generations in the lineage, so qualified diagnostics carry forward without being repeated.
 Renew right before a long review: the wrapper refuses a run whose token would expire
-before `timeout + 6 minutes`.
+before `timeout + 6 minutes` at binding, at activation verification and at the snapshot
+taken just before launch. Under the full 7200 s exception that means more than about 2.1 h
+of remaining token lifetime, so renew immediately before such a request.
 
 The store is resolved per machine, in this order:
 

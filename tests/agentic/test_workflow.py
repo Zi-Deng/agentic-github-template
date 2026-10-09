@@ -338,6 +338,10 @@ class WorktreeTests(GitFixture):
 
         with patch.object(workflow, "run", side_effect=fake):
             result = workflow.merge_preflight(self.repo, 31, self.head, directory)
+            # A single review is bound to its contract digest; a later issue edit (for example
+            # a ticked acceptance checkbox) does not invalidate its readiness.
+            self.issue["body"] += "\n- [x] ticked after the review\n"
+            self.assertEqual(workflow.merge_preflight(self.repo, 31, self.head, directory), result)
         self.assertIn("--match-head-commit " + self.head, result["command"])
         self.assertFalse(self.pr_data["merged"])
         # An INCOMPLETE record is refused even when its exact body was published.

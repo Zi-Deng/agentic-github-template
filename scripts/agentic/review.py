@@ -755,7 +755,10 @@ def verified_published(repo, directory, number, head, base):
     ):
         raise WorkflowError("Review coverage record is stale or belongs to another PR")
     current_pr(repo, number, head, base)
-    review_batch.current_contract(repo, Path(directory), meta)
+    if meta.get("kind") == "batch-parent":
+        # A batch continues across requests, so its issue/plan contract is re-checked live;
+        # a single review is bound to its contract digest at the round and needs no re-check.
+        review_batch.current_contract(repo, Path(directory), meta)
     qualification(directory, require=True)
     if meta.get("kind") == "batch-parent":
         review_batch.verify_unit_publications(repo, directory)
@@ -912,7 +915,8 @@ def main():
         else:
             meta = verify_packet(args.directory)
             current_pr(repo, meta["pr"], meta["head_sha"], meta["base_sha"])
-            review_batch.current_contract(repo, Path(args.directory), meta)
+            if meta.get("kind") == "batch-parent":
+                review_batch.current_contract(repo, Path(args.directory), meta)
             result = qualification(args.directory, require=True)
         print(json.dumps(result, indent=2) if isinstance(result, dict) else result)
         if args.command == "run" and not coverage_ready(args.directory):

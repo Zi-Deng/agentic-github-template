@@ -497,10 +497,15 @@ def batch_budget(value, parent_policy, units):
     numeric = int(unit) if unit == unit.to_integral_value() else float(unit)
     if exact_amount(numeric, field) != unit:
         raise WorkflowError("Per-unit allocation is not exactly representable by provider policy")
-    if (
-        unit > exact_amount(parent_policy["budget"][field], field)
-        or value["unit_seconds"] > parent_policy["budget"]["timeout_seconds"]
-    ):
+    # A recorded exception raises one single request, never a unit: units stay within the
+    # policy defaults, and the unit policy carries no exception record.
+    ceiling_amount = exact_amount(parent_policy["budget"][field], field)
+    ceiling_seconds = parent_policy["budget"]["timeout_seconds"]
+    if unit_policy["budget"].pop("exception", None) is not None:
+        ceiling_seconds = min(ceiling_seconds, DEFAULT_TIMEOUT_SECONDS)
+        if field == "estimated_usd":
+            ceiling_amount = min(ceiling_amount, exact_amount(DEFAULT_ESTIMATED_USD, field))
+    if unit > ceiling_amount or value["unit_seconds"] > ceiling_seconds:
         raise WorkflowError("Unit allocation exceeds immutable parent policy")
     unit_policy["budget"][field] = numeric
     unit_policy["budget"]["timeout_seconds"] = value["unit_seconds"]

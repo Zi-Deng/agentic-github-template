@@ -486,7 +486,32 @@ FLOW-DC object `c303c46` (its unmerged bounded-batch branch) for the batch units
   no batch has run against a provider in this template.
 - The reviewed head's readiness. The final native review is recorded below once run.
 
-### Final native review of PR #23
+### Final native review of PR #23 (head `45c6917`)
 
-Pending at the time of this commit; the result (head, exception record, status, usage,
-duration, findings and repairs) is appended here before the maintainer's merge decision.
+Preparation on 2026-10-09: the pinned 2.1.282 binary registered in the control clone, the
+login-root override pointing at the dedicated Max store, a human `claude-login-setup
+--renew --paid-usage-disabled` (new generation of the same registration, receipt to
+2026-10-16), then two `diagnose-claude` attempts, both qualified on the first request
+(`native-tools-and-source` 17 s / $0.07 reference, `isolation-refusal` 19 s / $0.07),
+leaving `activation_blockers: []` with `current_generation_live_tested: true`.
+
+`task-review 22 --execute --publish --review-timeout-seconds 7200
+--review-max-estimated-usd 60 --review-exception-reason …` under `astra-claude` (Claude Code
+native `claude-opus-5-5`, effort `medium`): packet `pr-23-45c6917d10bf-3a834a59`, 762
+required items (2.7 MB, inventory schema 3, no omissions), the exception recorded inside
+the policy budget. Result: **published-incomplete**, review
+[5465964694](https://github.com/Zi-Deng/agentic-github-template/pull/23#pullrequestreview-5465964694)
+(exact-match verified, header carries the exception line), 210 s, $2.51 reference,
+53 turns, 52 tool records (40 Read, 10 Grep, 2 Glob, one Read failed), 46 of 762 items
+credited, 716 unread, reasons `tool_execution_failed` and
+`tool_failed_or_unsupported_content`. The model stated that no budget signal was reached
+and that it had prioritized the new security-relevant modules (`claude_native_auth`,
+`claude_activation`, `review_claude`, `review_policy`, `review_batch`, `review.py`,
+`check_repository.py`, the configuration and the acceptance criteria). It reported one P3
+finding (the live issue/plan re-check applied to single reviews at merge preflight and
+`qualify`) and two residual questions (batch units inheriting a parent's exception; token
+lifetime under a 7200 s exception). Both code points are repaired in this commit, which
+makes the head unreviewed again; a `batch-preview` of the same packet plans 146 units
+(145 components plus integration), so a full batch would be about 146 requests. The
+maintainer decides between a maintainer-decision merge, a further single request or a
+batch; this record does not claim the update was coverage-qualified.
