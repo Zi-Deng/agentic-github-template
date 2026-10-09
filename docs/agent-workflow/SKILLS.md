@@ -92,10 +92,11 @@ files to satisfy a guard.
 `AGENTIC_PROFILE`, then the ignored `.agentic-local/profile.json` written by
 `workflow.py profile use NAME`, then `default_profile`.
 
-| Profile | Implementer | Reviewer (Copilot CLI) | Default |
+| Profile | Implementer | Reviewer backend and exact model | Default |
 | --- | --- | --- | --- |
-| `astra-claude` | Codex `gpt-6-astra` | `claude-opus-5` | yes |
-| `fable-gpt` | Claude Code `claude-fable-5-1` | `gpt-6-astra` | no |
+| `astra-copilot` | Codex `gpt-6-astra` | Copilot CLI `claude-opus-5` | yes; also the hosted profile |
+| `astra-claude` | Codex `gpt-6-astra` | Claude Code native `claude-opus-5-5`, effort `medium` (adapter ships in a later change; refused at preparation until then) | no |
+| `fable-gpt` | Claude Code `claude-fable-5-1` | Copilot CLI `gpt-6-astra` | no |
 
 Skill metadata does not change the active model of an arbitrary host conversation; the
 host you type into coordinates, and the managed launcher starts the active profile's
@@ -107,9 +108,13 @@ unless recorded with `--allow-same-family`, and every helper warns while such a 
 active. Cheaper-model changes remain a separate deliberate policy decision.
 
 The managed launcher and review coordinator enforce the selected profile's backend and
-models. A deliberate model change updates the profile, its validation and the role
-guidance together; the model regexes refuse aliases such as `opus` or `auto` because they
-would float.
+models. The review coordinator binds the resolved immutable policy (provider, exact
+catalog model, effort, CLI pin, budget) to each packet and round; explicit per-call
+`--review-provider`, `--review-model` and `--review-effort` flags override one round and
+are recorded, never persisted. A deliberate model change updates the profile, its
+validation and the role guidance together; the catalog refuses aliases such as `opus` or
+`auto` because they would float, and new exact models need a verified compatibility
+declaration (`review_model_extensions`).
 
 The managed executor implements the approved scope, runs checks, prepares commits and
 returns publication text. The coordinator checks actual Git state and performs GitHub
@@ -125,13 +130,14 @@ permissions. Do not claim that the environment marker isolates credentials or ma
 a malicious executor harmless. This is distinct from the independent reviewer's
 restricted model-tool surface.
 
-The independent reviewer is a new Copilot process with a fresh snapshot and state
-directory for every round. Its model is the active profile's reviewer (`claude-opus-5`
-under `astra-claude`, `gpt-6-astra` under `fable-gpt`), frozen into the round record and
-packet metadata; its available tools are only `view`, `grep` and `glob`. It sees the
-public contract, source/diff, checks and rubric. It receives neither the implementer
-conversation nor private task memory. Read
-[REVIEW.md](REVIEW.md) for the exact isolation boundary and evidence limitations.
+The independent reviewer is a new provider process with a fresh snapshot and state
+directory for every round. Its backend and model come from the active profile (Copilot
+`claude-opus-5` under `astra-copilot`, Copilot `gpt-6-astra` under `fable-gpt`), frozen
+into the round record and packet metadata; the Copilot tools are only `view`, `grep` and
+`glob`. It sees the public contract, source/diff, checks and rubric, and must read every
+required material through those tools for the round to qualify. It receives neither the
+implementer conversation nor private task memory. Read [REVIEW.md](REVIEW.md) for the
+exact isolation boundary and [COVERAGE.md](COVERAGE.md) for the evidence rules.
 
 ## Commands behind capture, planning and preparation
 
@@ -313,3 +319,20 @@ model accounts, repository permissions, check names or domain policy. Preserve e
 project instructions and use [SETUP.md](SETUP.md#existing-projects) to reconcile file
 conflicts. For project-specific rollout, read [NICME](../adoption/NICME.md) or
 [SpiderML](../adoption/SpiderML.md).
+
+## Coverage-aware phase handoff
+
+The phase skills share the [coverage runbook](COVERAGE.md). Capture and plan expose
+individual acceptance criteria and identify relevant tests, boundaries and evidence
+gaps. Preparation keeps the contract discoverable. Implementation and repair supply exact
+commands, omissions and finding dispositions without claiming the reviewer ran tests.
+
+`task-review --prior-review DIRECTORY` accepts a validated same-PR ancestor packet,
+retains old uncovered material and adds repair/finding links. Scope planning remains
+one bounded request. Actual successful canary and source-range evidence are required;
+configuration or nonempty prose is insufficient. Partial publication returns INCOMPLETE
+and never designates readiness. Finish also rejects pre-gate, missing or changed evidence.
+Keep the exact model response separate from its publication envelope, retain sanitized
+failure diagnostics and do not republish raw provider session files. Known numerical
+usage is recorded without inferred currency conversions. Full migration and exact
+historical comparison commands are in the runbook.

@@ -1,6 +1,6 @@
 ---
 name: agentic-review
-description: "Run and publish an independent review by the active profile's configured reviewer model of a GitHub pull request using a fixed head/base snapshot through Copilot CLI. Use for the review phase or re-review after repair; do not perform the review in the implementation conversation."
+description: "Run and publish an independent review of a GitHub pull request using a fixed head/base snapshot through the active profile's reviewer backend and exact model. Use for the review phase or re-review after repair; do not perform the review in the implementation conversation."
 ---
 
 # Review Pull Request
@@ -9,10 +9,16 @@ Coordinate independent review; the implementation model must not substitute its 
 
 Resolve the PR, issue, designated approved plan and task record. From the clean trusted control checkout, verify current head/base and gather the public contract, PR discussion, reviews, inline comments, diff, checks and source/rubric through the existing snapshot helper. Use trusted control instructions. Do not pass the executor's conversation, private memory, credentials, or active PR-supplied settings to the reviewer.
 
-Run the task review procedure with the active profile's configured reviewer model, existing time/credit limits and a fresh packet/process/state directory. Retain the view/search tool allowlist; no command execution, edits, delegation, inherited hooks or resumed reviewer session. If the model or required isolation capability is unavailable, report the failure rather than switch models or relax controls.
+Inspect `workflow.py profile show` (the resolved review policy, its sources and activation blockers) before execution. The reviewer comes from the active profile; local preparation and managed `task-review` accept explicit per-call `--review-provider`, `--review-model` and `--review-effort` overrides that are recorded in the packet, never persisted. Naming only a provider selects that provider's default model and effort. A profile whose reviewer adapter is not installed refuses at preparation.
+
+Use a fresh packet/process/state directory bound to the immutable policy. Copilot uses the registered pinned CLI with `view`, `grep` and `glob`, 900 seconds and 400 AI credits by default. No command execution, edits, delegation, inherited hooks, fallback, new wrapper inference retry or resumed session. If the model, the registered binary or a required isolation capability is unavailable, report the failure rather than switch models or relax controls.
 
 Read the report for supported findings and explicit limitations, preserving its exact text. Publication uses the helper's hash and head/base checks and creates a COMMENT review, never human approval. A changed head/base requires a new packet; retry publication of an unchanged report through its existing marker.
 
 Every material finding must identify severity, original location, trigger, impact, evidence and a minimal fix direction. Missing evidence and omitted material limit confidence. The reviewer executes no tests; CI and executor evidence are separately attributed. Do not claim that clean findings or passing CI alone establish all acceptance criteria.
 
 Record and return the review URL, requested model, head/base, packet path, findings and coverage limits. Use one attempted round by default. A supported critical P0/P1 finding permits a further round to verify its repair; record its public reference and concrete reason through the continuation flags. Other extra rounds need an explicit user request; P2/P3 findings, questions or incomplete coverage alone do not qualify. Follow the operating contract's continuation procedure. Hand repairs back to the saved implementer session; do not repair within the reviewer process.
+
+Use the required-material inventory and the same-request actual provider read/search/list probe. Require successful returned-line evidence, not model assertions. Use `--prior-review` only with a validated same-PR ancestor packet; retain uncovered material and findings. Partial reports may be published as INCOMPLETE but never designated ready. Preserve exact output and sanitized failure diagnostics; never publish raw sessions or silently rerun paid calls.
+
+Read [the coverage contract and migration runbook](../../../docs/agent-workflow/COVERAGE.md).

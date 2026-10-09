@@ -19,8 +19,9 @@ a further round to verify its repair; the coordinator records the public finding
 concrete reason through the continuation flags. Other extra rounds need an explicit
 user request. P2/P3 findings, uncertain questions and incomplete coverage do not by
 themselves permit another round. Every additional invocation needs its own recorded
-basis; see [the continuation procedure](SKILLS.md). A failed or incomplete run does not
-establish readiness. Keep the original report intact and publish dispositions separately.
+basis; see [the continuation procedure](SKILLS.md). A failed or INCOMPLETE run does not
+establish readiness; [FINISH.md](FINISH.md#when-the-review-is-incomplete) lists the
+maintainer's options. Keep the original report intact and publish dispositions separately.
 
 ## Local procedure
 

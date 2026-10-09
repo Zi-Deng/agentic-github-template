@@ -50,6 +50,7 @@ with the [Opus](docs/agent-workflow/REVIEW.md#claude-opus-5-access) and
 | Work an issue from start to finish | [Operating guide](docs/agent-workflow/OPERATING-GUIDE.md) |
 | Merge a reviewed PR and preserve its artifacts | [Human finishing procedure](docs/agent-workflow/FINISH.md) |
 | Run local or manual Actions review | [Independent review](docs/agent-workflow/REVIEW.md) |
+| Understand what makes a review coverage-qualified | [Coverage contract](docs/agent-workflow/COVERAGE.md) |
 | Adopt in NICME | [Migration plan](docs/adoption/NICME.md) · [validation design](docs/adoption/NICME-VALIDATION.md) |
 | Adopt in SpiderML | [SpiderML adoption](docs/adoption/SpiderML.md) |
 | Understand changes from the PDF | [Requirement traceability](docs/agent-workflow/TRACEABILITY.md) |
@@ -102,7 +103,9 @@ ignored artifacts, and clean up verified branches.
 - A human-run finish script with recoverable artifact archival and guarded branch cleanup.
 - Required issue fields and a PR template separating software evidence from domain evidence.
 - Sibling task worktrees, existing-branch recovery, draft PR creation and merge preflight.
-- A fresh Copilot reviewer with read/search tools, source snapshots and SHA-bound COMMENT reviews.
+- A fresh independent reviewer over an inert snapshot with a required-material inventory:
+  the round qualifies only when every required item was observed read through literal
+  read-only tool results; partial reports publish as INCOMPLETE and are never designated.
 - A manual, opt-in Actions review with separate generation and publication permissions.
 - Deterministic CI, a ruleset generator, pinned Actions, and regression tests for unsafe states.
 - An installation preview that refuses file conflicts before writing anything.

@@ -347,8 +347,102 @@ The repaired head has not been independently reviewed. Under the one-attempted-r
 policy, a further round needs an explicit maintainer request; the maintainer decides
 whether to request it or to merge on the reviewed-head rule exception.
 
-### Pending live evidence (post-merge)
+### Live evidence delivered after merge
 
-- The `fable-gpt` pilot on the stale-worktree `doctor` warning issue, including the single
-  recorded `--containment bypass` run, the same Claude session across implement and repair,
-  a published `gpt-6-astra` review, and the switch back to `astra-claude`.
+- The `fable-gpt` pilot on the finished-worktree `doctor` report was delivered on
+  2026-10-05 as PR #18 (one recorded `--containment bypass` run, the same Claude Code
+  session across implement, resume and repair, a published `gpt-6-astra` review); see the
+  consolidation section below. The switch back is to `astra-copilot`, the default profile
+  since PR #13.
+
+## Review-foundation consolidation — 2026-10-05
+
+Contract: the approved consolidation plan recorded in the coordinating session (eight PRs
+A1, A2, A3, B1, B2, B3, C1, C2 plus a default flip), executed as
+[issue #12](https://github.com/Zi-Deng/agentic-github-template/issues/12) /
+[PR #13](https://github.com/Zi-Deng/agentic-github-template/pull/13) (A1),
+[issue #14](https://github.com/Zi-Deng/agentic-github-template/issues/14) /
+[PR #15](https://github.com/Zi-Deng/agentic-github-template/pull/15) (A1.1),
+[issue #16](https://github.com/Zi-Deng/agentic-github-template/issues/16) /
+[PR #18](https://github.com/Zi-Deng/agentic-github-template/pull/18) (the `fable-gpt` pilot)
+and [issue #17](https://github.com/Zi-Deng/agentic-github-template/issues/17) /
+[PR #19](https://github.com/Zi-Deng/agentic-github-template/pull/19) (A2). Source for the
+ported review layer: `Zi-Deng/FLOW-DC` at `8271616`. The coordinating Claude Code session
+(`claude-fable-5-1`) implemented A1, A1.1 and A2 directly under the maintainer's standing
+exception; the pilot was implemented by the managed Claude Code executor.
+
+### Local evidence
+
+- Regression suite growth on CPython 3.12.3 (`.agentic-local/validation-venv`): 163 tests
+  before A1, 216 after A1's repair, 218 after A1.1's repair, 225 after the pilot's repair,
+  304 after A2's repair and 315 on A2's merged head. Every head was gated by `make check`
+  and `make check-clean`; no model was called by the suite.
+- `check_repository.py` now validates schema 3 profiles, the Copilot-backed hosted profile,
+  required-check jobs and receipt wiring from configuration, and the hosted gate steps.
+- The pinned Copilot CLI 1.0.83 archive (SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`)
+  was downloaded with `install_tool.py` and registered in the control clone's private
+  `.agentic-local/provider-clis/copilot/1.0.83/` bundle (0700) with `register-reviewer`.
+- `task-status`, `doctor` and every publication in this section went through the exact
+  UTF-8 GitHub transport.
+
+### Independent reviews (pre-gate runner, Copilot `claude-opus-5` unless stated)
+
+| PR | Review | Findings | Repair |
+| --- | --- | --- | --- |
+| #13 head `c4a8941` | [5420076124](https://github.com/Zi-Deng/agentic-github-template/pull/13#pullrequestreview-5420076124), 15 premium requests | 1 P2, 5 P3, 3 questions | `19e692f`, dispositions posted; merged by the maintainer without a second round |
+| #15 head `61ee1ee` | [5421290951](https://github.com/Zi-Deng/agentic-github-template/pull/15#pullrequestreview-5421290951), 15 premium requests | 1 P2, 1 P3, 1 P2 answered without change, 3 questions | `da2dd29`, dispositions posted; merged by the maintainer |
+| #18 head `b45316a` | [5421525997](https://github.com/Zi-Deng/agentic-github-template/pull/18#pullrequestreview-5421525997), Copilot `gpt-6-astra`, 1 premium request, `fable-gpt` profile | 4 P2 | `a35ecdf` by the same pinned Claude Code session, coordinator formatting `2e47fc6`, response and a count correction posted; merged by the maintainer |
+| #19 head `20a185e` | [5421619952](https://github.com/Zi-Deng/agentic-github-template/pull/19#pullrequestreview-5421619952), 15 premium requests | 3 P2, 2 P3, 4 questions | `2491a76`, dispositions posted; merged by the maintainer after a merge from main and a fixture fix |
+
+The A2 review ran against a 295 767-byte diff under the pre-gate runner's 300 KB cap.
+
+### First review under the coverage gate (PR #21, head `0136c13`)
+
+`task-review 20 --execute --publish` from the control clone, `astra-copilot`, Copilot
+`claude-opus-5` through the registered pinned 1.0.83 binary, 15 premium requests, 668 s:
+status **published-incomplete**, no designation. The wrapper recorded zero diagnostic
+reasons, the capability probe true for `view`, `grep` and `glob`, 150 retained tool
+records (142 successful views) and a well-formed schema-2 JSON report with four findings.
+The inventory held 201 required items (11 523 lines, 654 KB in 20 scopes); 115 were
+observed read, 84 were explicitly reported unread (69 test files, the seven ranges of
+`test-map.json`, the eight head copies of the `.claude/skills` mirror) and 2 ranged views
+of `SKILLS.md` were ambiguous and earned no credit. The reviewer counted 117 as read; the
+wrapper credits only ranges its literal results covered. The test inventory dominated
+because every file under `docs/agent-workflow` maps to the `agentic-workflow` component,
+so a documentation PR carries every workflow test as required material; a narrower
+mapping for documentation-only changes is an open follow-up, not a bypass. The four
+findings were repaired in the same PR; the repaired head needs a fresh round, and the
+maintainer decides between an explicitly authorized continuation with `--prior-review`
+and the documented maintainer-decision merge.
+
+### `fable-gpt` pilot (issue #16)
+
+- Managed implementation: `launch implement 16 --managed --execute --containment bypass`
+  with a recorded reason; session `1ba5aa4a-c04b-481a-9828-0c78fed55a04`, 40 Bash calls,
+  one commit (`b45316a`, 222 tests locally), status `checkpoint` because no PR existed yet.
+  The deny rule `Bash(rm -rf *)` denied the executor's `rm -rf .venv && …` command under
+  `bypassPermissions`, confirming the probe of 2026-09-24.
+- Restricted resume (`launch implement 16 --managed --execute`) completed the task in the
+  same session; the restricted allow-list denied the executor's validation commands.
+- Managed repair (`launch repair 18 --managed --execute`, same session) addressed all four
+  P2 findings in `a35ecdf` but could not run tests or ruff: its `.venv/bin/python … | tail`
+  and `awk` invocations do not match the `python3 *` allow pattern. The coordinator ran
+  the gate (225 tests), applied one ruff formatting commit and published the response.
+  Widening the restricted allow-list is an open follow-up.
+- The maintainer switched back to `astra-copilot` by not persisting the profile; the pilot
+  used `AGENTIC_PROFILE=fable-gpt` per command.
+
+### Hosted and operator evidence
+
+- GitHub Actions had a major outage from 20:47 UTC (incident "Incident with Actions");
+  three `quality` attempts on `19e692f` were cancelled after 15 minutes without a runner,
+  and the fourth passed at 21:5x UTC after mitigation. Receipts
+  `validation-quality-…-4` and `validation-agentic-quality-…-2` were uploaded.
+- The merged A2 head first failed `quality` with "Directory not empty: origin.git/objects"
+  in three test teardowns: Git 2.47+ on the hosted runner detaches auto-maintenance after
+  fetches. The fixture now disables `maintenance.auto`, `gc.auto` and `receive.autogc`.
+- The maintainer applied the two-check ruleset (`quality`, `agentic-quality`) on
+  2026-10-05 after #15 merged; the session was not permitted to change rulesets.
+- Pre-gate rounds that predate A2 (schema-1 packets) remain publishable and byte-verifiable
+  but cannot be designated or finished; every finish from now on needs a coverage-qualified
+  round and `merge-preflight --review-directory`.

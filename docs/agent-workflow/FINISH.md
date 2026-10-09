@@ -167,6 +167,42 @@ files. The human finishing script archives them first and calls that guarded cle
 only after the task worktree meets its preconditions. The human owns any decision to
 abandon an unmerged PR; abandonment is not successful finishing.
 
+## Coverage qualification
+
+The designated report must pass the shared required-material validator against its
+immutable packet, exact saved response and sanitized actual-tool diagnostics: every
+required item observed read through literal tool results, the capability probe
+satisfied, the report contract honoured. Pre-gate records, arbitrary head comments,
+missing diagnostics, malformed coverage and partial inspection fail readiness. The
+low-level alternative requires `merge-preflight PR --reviewed-sha SHA --review-directory DIR`
+and the exact published coverage-qualified COMMENT for that head. This gate verifies
+accounting, not understanding or human approval; acceptance, findings and executable
+validation remain separate obligations. See [COVERAGE.md](COVERAGE.md).
+
+## When the review is INCOMPLETE
+
+A report whose required material was not fully observed read publishes with the
+**INCOMPLETE static inspection — not ready** label and is never designated. It is still
+evidence: read its findings, then inspect `coverage.json` (which items stayed `unread` or
+`unsupported` and why) and `diagnostics.json` (bounded reason codes such as
+`capability_probe_incomplete`, `truncated_tool_result` or `provider_timeout`). Choose one
+of three paths, in this order of preference:
+
+1. **Reduce the material.** Split the change into smaller PRs, or move unrelated files out
+   of the diff, and prepare a fresh packet for each.
+2. **Continue explicitly.** When the uncovered material is small and the reason is a
+   bounded provider limit, record the basis and run one more round with
+   `task-review ISSUE --execute --publish --fresh --approved-continuation --continue-reason TEXT
+   --prior-review DIR`; the prior packet's uncovered material and findings carry forward,
+   the request allowance is still one per round, and the result may again be INCOMPLETE.
+3. **Decide as the maintainer.** You may merge on your own judgment through GitHub after
+   reading the partial report, the uncovered inventory and the required checks. Do this
+   deliberately: link the INCOMPLETE review and the packet directory in the PR's review
+   record, note the decision in `VERIFICATION.md`, and expect every tooling gate to refuse,
+   because none implements a bypass flag; `finish-prepare`, designation and the finishing
+   script stay unavailable for that PR, so archive ignored artifacts yourself and use the
+   low-level `cleanup-task` after the merge.
+
 ## Finding finished worktrees
 
 `python3 scripts/agentic/workflow.py doctor` lists every registered `issue-N-slug` task

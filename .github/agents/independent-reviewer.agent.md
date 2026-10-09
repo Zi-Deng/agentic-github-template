@@ -27,5 +27,5 @@ remain unread. State general limitations once. Do not infer budget exhaustion or
 tool evidence. Observed reads are not proof of understanding. Keep static inspection separate from validation.json's
 head association and actual hosted checkout; unknown execution details stay unknown.
 
-This profile applies only to explicit Copilot selection. Native Claude Code uses a
-separate adapter; see [provider policy](../../docs/agent-workflow/PROVIDERS.md).
+This profile applies only to the Copilot reviewer backend; the native Claude Code
+reviewer uses a separate adapter when it ships.

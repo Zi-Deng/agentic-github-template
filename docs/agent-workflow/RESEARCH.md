@@ -155,3 +155,30 @@ CPython 3.12.3. Copilot per-model credit multipliers and subscription accounting
 found in the consulted documentation, so cost statements remain qualitative. The
 `profile` mechanism is declarative so adopters can add their own pairings; the family
 regexes refuse `auto` and aliases because the policy forbids floating models.
+
+## Review-foundation consolidation — 2026-10-05
+
+The maintainer asked to consolidate this template's switchable profiles with the review
+layer that `Zi-Deng/FLOW-DC` built on top of an earlier template revision (`b4a1df7`).
+Sources read in full on 2026-10-05: FLOW-DC main `8271616` (`scripts/agentic/*`, tests,
+every `docs/agent-workflow/*.md` including its provider guide), its unmerged batch
+branch for bounded review units at `c303c46`, and the live state of its control clone.
+Decisions:
+
+| Decision | Rationale |
+| --- | --- |
+| Profiles remain the only operator selection; FLOW-DC's immutable policy dict is what packets and rounds bind | One selection unit for implementer and reviewer; policy digests stay machine-independent |
+| Configuration schema 3 with shims for schema 1 and both schema 2 dialects | The two schema 2 dialects were mutually incompatible; shims load either without rewriting |
+| Closed reviewer catalog with exact per-provider spellings (`claude-opus-5-5` for Claude Code, `claude-opus-5.5` for Copilot), no aliases | Provider IDs differ; translation would float |
+| Hosted Actions review is Copilot-only through `hosted_profile` | No Claude token in Actions; a profile resolving elsewhere is refused, not converted |
+| Coverage gate ported for Copilot first; the Claude Code adapter, native login, activation diagnostics and batch units follow | Each PR had to stay under the pre-gate reviewer's 300 KB cap and get one independent review |
+| Frozen FLOW-DC adapters (packet schemas 2, 3, 4, 6), its migration-history records and project literals not ported | History belongs to FLOW-DC; the template keeps schema 1, 5 and 7 inspectable |
+| `max_diff_bytes` ships as `null` once the inventory bounds material per item and scope | A diff the reviewer cannot read in one request comes back INCOMPLETE instead of being refused |
+| Default reviewer flips to Claude Code native only after the first coverage-qualified native review is recorded | The template's own evidence policy |
+
+Versions inspected: Claude Code 2.1.282, Codex 0.157.0, Copilot CLI 1.0.83, gh 2.100.0,
+CPython 3.12.3; hosted runners `ubuntu-24.04` with Python 3.12.14 and Git 2.47+ (whose
+detached auto-maintenance surfaced the fixture race). GitHub's status API was used to
+attribute the 2026-10-05 Actions outage. FLOW-DC's live evidence for its Copilot coverage
+gate was two schema-3 packets, neither qualified, so the gate's first qualified live run
+is expected in this template.
