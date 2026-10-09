@@ -3,7 +3,9 @@
 The finish skill prepares the decision and command; the maintainer runs the command.
 Merge preparation is not a merge approval. The script checks mechanical preconditions,
 but the human still decides whether the reviewed change and domain evidence justify
-merging.
+merging. A batch review (`kind: batch-parent`) is ready only when every unit, including
+integration, is complete and every exact unit report and the aggregate are published for
+the current head; see [bounded batches](COVERAGE.md#provider-aware-bounded-batches).
 
 ## Before running the command
 

@@ -171,6 +171,8 @@ class Repo:
             yield
 
 
+# Implementation and test roots whose Python files are grouped into source/test families.
+DEFAULT_SOURCE_ROOTS = ("scripts/agentic", "tests/agentic")
 CONFIG_SCHEMAS = {1, 2, 3}
 
 
@@ -192,6 +194,7 @@ def configuration(root):
     result.setdefault("review_model_extensions", [])
     result.setdefault("claude_review_login_root", None)
     result.setdefault("private_paths", [])
+    result.setdefault("source_roots", list(DEFAULT_SOURCE_ROOTS))
     if result["schema_version"] == 3:
         result.setdefault("hosted_profile", None)
     for key in ("max_diff_bytes", "managed_max_prompt_bytes"):
@@ -225,6 +228,25 @@ def configuration(root):
         or ".." in Path(login_root).parts
     ):
         raise WorkflowError("claude_review_login_root must be null or an absolute path")
+    roots = result["source_roots"]
+    if (
+        not isinstance(roots, list)
+        or not 0 < len(roots) <= 32
+        or len(set(roots)) != len(roots)
+        or any(
+            not isinstance(item, str)
+            or not item
+            or len(item) > 200
+            or item.startswith("/")
+            or item.endswith("/")
+            or ".." in item.split("/")
+            or "\\" in item
+            for item in roots
+        )
+    ):
+        raise WorkflowError(
+            "source_roots must be a nonempty list of distinct relative directory prefixes (implementation and test roots)"
+        )
     prefixes = result["private_paths"]
     if (
         not isinstance(prefixes, list)
@@ -540,6 +562,7 @@ def merge_preflight(repo, number, reviewed_sha, review_directory=None):
     # A COMMENT review for this head is not enough: the saved packet must be coverage-qualified
     # and its exact publication body must be the one published for this head.
     review.verified_published(repo, review_directory, number, reviewed_sha, pr["base"]["sha"])
+    reviewed_policy = review.verify_packet(review_directory)["review_policy"]
     # --required must fail closed if no required checks are configured.
     checks = json.loads(
         run(
@@ -566,6 +589,11 @@ def merge_preflight(repo, number, reviewed_sha, review_directory=None):
         raise WorkflowError("Head or base changed during preflight")
     return {
         "reviewed_sha": reviewed_sha,
+        "reviewer": {
+            "provider": reviewed_policy["provider"],
+            "model": reviewed_policy["model"],
+            "budget_exception": reviewed_policy["budget"].get("exception"),
+        },
         "human_checks": "Read every finding, resolve conversations, confirm domain evidence and approve the merge yourself.",
         "command": shlex.join(
             [
@@ -582,6 +610,34 @@ def merge_preflight(repo, number, reviewed_sha, review_directory=None):
         ),
         "note": "Preflight does not merge and cannot attest to a human decision. Server rules remain authoritative.",
     }
+
+
+def review_policy_arguments(parser):
+    import review_policy
+
+    review_policy.add_arguments(parser)
+
+
+def diagnose_claude(repo, args):
+    """One recorded activation diagnostic under the active (or per-call) Claude selection."""
+    import claude_activation
+    import review_policy
+    from profiles import review_selection
+
+    if review_policy.exception_from_args(args) is not None:
+        raise WorkflowError("Activation diagnostics never carry a budget exception")
+    cfg = configuration(repo.root)
+    selection = review_selection(
+        repo,
+        cfg,
+        review_provider=args.review_provider,
+        review_model=args.review_model,
+        review_effort=args.review_effort,
+        warn_same_family=False,
+    )
+    return claude_activation.run(
+        repo, cfg, selection, purpose=args.purpose, reason=args.reason, login_root=selection["login_root"]
+    )
 
 
 def claude_logged_in():
@@ -678,6 +734,13 @@ def main():
     merge.add_argument("pr")
     merge.add_argument("--reviewed-sha", required=True)
     merge.add_argument("--review-directory", required=True)
+    diagnose = sub.add_parser(
+        "diagnose-claude",
+        help="Run one native Claude activation diagnostic (300 s / $2 reference) and record it",
+    )
+    diagnose.add_argument("--purpose", choices=["native-tools-and-source", "isolation-refusal"])
+    diagnose.add_argument("--reason")
+    review_policy_arguments(diagnose)
     register = sub.add_parser(
         "register-reviewer", help="Verify and privately register a pinned reviewer binary"
     )
@@ -745,7 +808,7 @@ def main():
                 and auth[backend] is True
             )
             return 0 if healthy else 1
-        if args.command == "profile":
+        if args.command in ("profile", "claude-login-root", "claude-login-setup"):
             result = dispatch_profile(repo, args)
         elif args.command == "sync-skills":
             from skills import sync as sync_skills
@@ -780,6 +843,10 @@ def main():
             import review_cli
 
             result = review_cli.register(repo, args.provider, args.binary, args.proof_directory)
+        elif args.command == "diagnose-claude":
+            result = diagnose_claude(repo, args)
+            print(json.dumps(result, indent=2))
+            return 0 if result["status"] == "qualified" else 2
         elif args.command == "launch":
             result = launch(
                 repo,

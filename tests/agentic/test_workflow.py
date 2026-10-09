@@ -15,6 +15,7 @@ from unittest.mock import PropertyMock, patch
 
 SOURCE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SOURCE / "scripts/agentic"))
+import claude_native_auth  # noqa: E402
 import install  # noqa: E402
 import profiles  # noqa: E402
 import review  # noqa: E402
@@ -54,6 +55,13 @@ class GitFixture(unittest.TestCase):
         for item in [".agentic", ".github/agents", "docs/agent-workflow"]:
             if (SOURCE / item).exists():
                 shutil.copytree(SOURCE / item, self.root / item)
+        # The fixture's mocked provider is the Copilot session-event stream, so the fixture
+        # repository pins the Copilot-backed profile; the shipped default (astra-claude) is
+        # asserted by test_profiles and check_repository, and Claude tests select it explicitly.
+        config_path = self.root / ".agentic/config.json"
+        fixture_config = json.loads(config_path.read_text(encoding="utf-8"))
+        fixture_config["default_profile"] = "astra-copilot"
+        config_path.write_text(json.dumps(fixture_config, indent=2) + "\n", encoding="utf-8")
         shutil.copyfile(SOURCE / "AGENTS.md", self.root / "AGENTS.md")
         # Minimal policy text keeps this fixture independent of documentation wording.
         for name in ["REVIEW.md", "domain-review.md"]:
@@ -330,6 +338,10 @@ class WorktreeTests(GitFixture):
 
         with patch.object(workflow, "run", side_effect=fake):
             result = workflow.merge_preflight(self.repo, 31, self.head, directory)
+            # A single review is bound to its contract digest; a later issue edit (for example
+            # a ticked acceptance checkbox) does not invalidate its readiness.
+            self.issue["body"] += "\n- [x] ticked after the review\n"
+            self.assertEqual(workflow.merge_preflight(self.repo, 31, self.head, directory), result)
         self.assertIn("--match-head-commit " + self.head, result["command"])
         self.assertFalse(self.pr_data["merged"])
         # An INCOMPLETE record is refused even when its exact body was published.
@@ -827,8 +839,11 @@ class ReviewTests(GitFixture):
         self.assertTrue(meta["provenance"]["same_family_acknowledged"])
         self.assertEqual(meta["provenance"]["profile"], "astra-copilot")
         with patch.dict(os.environ, {profiles.ENV_NAME: "astra-claude"}):
-            with self.assertRaisesRegex(workflow.WorkflowError, "claude_reviewer_adapter_not_installed"):
-                review.prepare(self.repo, 31, 12, 1234)
+            # The Claude adapter is installed; without a registered native login the
+            # packet cannot be bound, so preparation fails closed before any request.
+            with patch.object(claude_native_auth, "default_root", return_value=self.parent / "no-login"):
+                with self.assertRaisesRegex(workflow.WorkflowError, "native Max registration"):
+                    review.prepare(self.repo, 31, 12, 1234)
             with self.assertRaisesRegex(workflow.WorkflowError, "requires a reviewer backend of copilot"):
                 review.prepare(self.repo, 31, 12, 1234, require_backend="copilot")
             switched = review.prepare(

@@ -27,8 +27,8 @@ flowchart LR
 
 | Profile | Implementer (draft, plan, implement, repair) | Independent reviewer | Default |
 | --- | --- | --- | --- |
-| `astra-copilot` | Codex CLI, `gpt-6-astra`, ChatGPT account | Copilot CLI, `claude-opus-5` | yes (also the hosted Actions profile) |
-| `astra-claude` | Codex CLI, `gpt-6-astra`, ChatGPT account | Claude Code native, `claude-opus-5-5`, effort `medium` (adapter ships in a later PR; selecting it today reports `claude_reviewer_adapter_not_installed`) | no |
+| `astra-claude` | Codex CLI, `gpt-6-astra`, ChatGPT account | Claude Code native, `claude-opus-5-5`, effort `medium`, included Max billing only (dedicated login and two activation diagnostics; see [PROVIDERS.md](docs/agent-workflow/PROVIDERS.md)) | yes |
+| `astra-copilot` | Codex CLI, `gpt-6-astra`, ChatGPT account | Copilot CLI, `claude-opus-5` | no (the hosted Actions profile) |
 | `fable-gpt` | Claude Code, `claude-fable-5-1`, Claude subscription | Copilot CLI, `gpt-6-astra` | no |
 
 `python3 scripts/agentic/workflow.py profile use fable-gpt` switches this checkout through
@@ -51,6 +51,7 @@ with the [Opus](docs/agent-workflow/REVIEW.md#claude-opus-5-access) and
 | Merge a reviewed PR and preserve its artifacts | [Human finishing procedure](docs/agent-workflow/FINISH.md) |
 | Run local or manual Actions review | [Independent review](docs/agent-workflow/REVIEW.md) |
 | Understand what makes a review coverage-qualified | [Coverage contract](docs/agent-workflow/COVERAGE.md) |
+| Select, register, log in and activate a reviewer provider | [Reviewer providers](docs/agent-workflow/PROVIDERS.md) |
 | Adopt in NICME | [Migration plan](docs/adoption/NICME.md) · [validation design](docs/adoption/NICME-VALIDATION.md) |
 | Adopt in SpiderML | [SpiderML adoption](docs/adoption/SpiderML.md) |
 | Understand changes from the PDF | [Requirement traceability](docs/agent-workflow/TRACEABILITY.md) |

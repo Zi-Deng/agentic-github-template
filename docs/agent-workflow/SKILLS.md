@@ -94,8 +94,8 @@ files to satisfy a guard.
 
 | Profile | Implementer | Reviewer backend and exact model | Default |
 | --- | --- | --- | --- |
-| `astra-copilot` | Codex `gpt-6-astra` | Copilot CLI `claude-opus-5` | yes; also the hosted profile |
-| `astra-claude` | Codex `gpt-6-astra` | Claude Code native `claude-opus-5-5`, effort `medium` (adapter ships in a later change; refused at preparation until then) | no |
+| `astra-claude` | Codex `gpt-6-astra` | Claude Code native `claude-opus-5-5`, effort `medium`, included Max billing only | yes |
+| `astra-copilot` | Codex `gpt-6-astra` | Copilot CLI `claude-opus-5` | no; the hosted profile |
 | `fable-gpt` | Claude Code `claude-fable-5-1` | Copilot CLI `gpt-6-astra` | no |
 
 Skill metadata does not change the active model of an arbitrary host conversation; the
@@ -131,10 +131,11 @@ a malicious executor harmless. This is distinct from the independent reviewer's
 restricted model-tool surface.
 
 The independent reviewer is a new provider process with a fresh snapshot and state
-directory for every round. Its backend and model come from the active profile (Copilot
-`claude-opus-5` under `astra-copilot`, Copilot `gpt-6-astra` under `fable-gpt`), frozen
-into the round record and packet metadata; the Copilot tools are only `view`, `grep` and
-`glob`. It sees the public contract, source/diff, checks and rubric, and must read every
+directory for every round. Its backend and model come from the active profile (Claude
+Code native `claude-opus-5-5` under `astra-claude`, Copilot `claude-opus-5` under
+`astra-copilot`, Copilot `gpt-6-astra` under `fable-gpt`), frozen into the round record
+and packet metadata; the model's tools are only `Read`, `Grep` and `Glob` (Copilot:
+`view`, `grep` and `glob`). It sees the public contract, source/diff, checks and rubric, and must read every
 required material through those tools for the round to qualify. It receives neither the
 implementer conversation nor private task memory. Read [REVIEW.md](REVIEW.md) for the
 exact isolation boundary and [COVERAGE.md](COVERAGE.md) for the evidence rules.
@@ -328,8 +329,11 @@ gaps. Preparation keeps the contract discoverable. Implementation and repair sup
 commands, omissions and finding dispositions without claiming the reviewer ran tests.
 
 `task-review --prior-review DIRECTORY` accepts a validated same-PR ancestor packet,
-retains old uncovered material and adds repair/finding links. Scope planning remains
-one bounded request. Actual successful canary and source-range evidence are required;
+retains old uncovered material and adds repair/finding links. Default scope planning
+remains one bounded request; `task-review --batch` previews the full partition, and
+execution requires typed budgets, output bounds and a named authorization
+([bounded batches](COVERAGE.md#provider-aware-bounded-batches)); resume never retries an
+attempted unit. Actual successful canary and source-range evidence are required;
 configuration or nonempty prose is insufficient. Partial publication returns INCOMPLETE
 and never designates readiness. Finish also rejects pre-gate, missing or changed evidence.
 Keep the exact model response separate from its publication envelope, retain sanitized

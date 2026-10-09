@@ -87,6 +87,18 @@ def validate_configuration(root):
     assert hosted and declared["profiles"][hosted]["reviewer"]["backend"] == "copilot", (
         "hosted_profile must name a profile whose reviewer backend is copilot"
     )
+    import review
+
+    default = declared["profiles"][declared["default_profile"]]
+    assert default["reviewer"]["backend"] in review.INSTALLED_REVIEWERS, (
+        "default_profile must name a profile whose reviewer adapter this harness installs"
+    )
+    # Native login stores are per machine: the committed configuration never names one.
+    assert config["claude_review_login_root"] is None, (
+        "Use the local claude-login-root override, not configuration"
+    )
+    for name, profile in declared["profiles"].items():
+        assert profile["reviewer"].get("login_root") is None, f"Profile {name!r} must not commit a login path"
     schema = json.loads((root / ".agentic/schemas/executor-result.json").read_text())
     assert schema["type"] == "object" and schema["additionalProperties"] is False
     assert set(schema["required"]) == set(schema["properties"]) == {"status", "summary", "checks", "blockers"}

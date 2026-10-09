@@ -8,8 +8,9 @@ accidental changes; they are not a cryptographic attestation against their owner
 
 ## Packet and scope contract
 
-New packets use metadata schema 7 (`kind: single`) with the immutable review policy,
-the profile, the per-call overrides and their sources. Schemas 2, 3, 4 and 6 belong to
+New packets use metadata schema 7 with the immutable review policy, the profile, the
+per-call overrides and their sources, and an explicit `kind`: `single` (one request),
+`batch-parent` (a planned batch) or `batch-unit` (one unit's packet under a parent). Schemas 2, 3, 4 and 6 belong to
 frozen adapters this harness does not ship and are refused; schema 5 (FLOW-DC coverage
 packets) stays inspectable and verifiable. `START.txt` leads to `issue.txt`, `plan.txt`,
 `criteria/*.txt`, `acceptance.txt`, `changed-files.json`, `changes/*.txt`, `test-map.json`,
@@ -34,12 +35,90 @@ plus addition. Empty files have an explicit empty-blob inventory record. Oversiz
 nonregular or unsupported changed material remains an unsupported obligation.
 
 Each navigation scope has at most 12 items, 800 required lines and 64000 required
-UTF-8 bytes. Material entries split at 120 lines or 16000 bytes. A single line beyond
-that bound remains explicitly unsupported, with its complete source available.
-The global inventory partitions every required ID exactly once, including a separate
-cross-boundary pass. `scopes.json` reports required items/lines/bytes and available
-source bytes. These are operational counts, never percentages proving correctness.
-Scopes organize **one request** with the existing budget; they never launch paid fan-out.
+UTF-8 bytes. Material entries split at 120 lines or 16000 bytes; a longer line becomes a
+lossless projection (below) or, beyond 65,536 bytes, an explicit unsupported obligation
+with its complete source still available. Scopes group implementation modules with their
+tests by the longest matching implementation stem under the configured `source_roots`
+(default `scripts/agentic` and `tests/agentic`; a test module `test_<stem>_<suffix>.py`
+joins `<stem>`), so hash IDs never interleave unrelated files; criteria and findings keep
+their own obligations. The global inventory partitions every required ID exactly once,
+including a separate cross-boundary pass. `scopes.json` reports required items/lines/bytes
+and available source bytes. These are operational counts, never percentages proving
+correctness. By default scopes organize **one request** with the existing budget; they
+never launch paid fan-out. An explicit batch (below) is the only multi-request form.
+
+### Lossless long-line projections (inventory 3 / projection 1)
+
+An oversized line of at most 65,536 UTF-8 bytes becomes a separate inert projection
+artifact under `projections/`. Each ASCII JSON row is `[start_byte, end_byte, text]`
+with absolute zero-based UTF-8 byte offsets, an exclusive end and at most 128 characters
+of exact text; concatenating the decoded text without separators reproduces exactly the
+original line. The inventory item binds the raw artifact and hash, the original 1-based
+line, the byte interval and the projection hash; the raw snapshot stays byte-identical.
+Every projected range is an independently required item under the usual 120-line /
+16,000-byte bounds. Qualification reproduces the canonical projection from the hashed raw
+source before crediting returned projection spans: missing, changed, truncated or unread
+chunks fail, and reading the raw line does not manufacture projection evidence.
+`review_projection.py` caps new projections at 2,000,000 bytes per packet; overflow
+retains an unsupported obligation, never a shortened source. Inventory schema 3 is
+emitted only when a packet carries projections; otherwise schema 2 binds each
+`changed-source`, `test` and `prior-material` item to its revision's source index.
+Regular UTF-8 `.mjs` modules are reviewable text like other code.
+
+## Provider-aware bounded batches
+
+Single-request review remains the default. `review.py batch-preview DIRECTORY` derives
+the complete unit plan from a prepared single packet without inference: one component
+unit per source/test family plus one `integration` unit that reads every exact component
+report, each with its required IDs, context IDs and navigation volumes. Supplying the
+typed bounds to `batch-preview` yields the executable preview that a named authorization
+binds: `--batch-requests`, `--batch-kind` (`reference-usd` for Claude Code, `ai-credits`
+for Copilot), `--batch-cost`, `--batch-seconds`, `--batch-unit-cost`,
+`--batch-unit-seconds`, `--batch-max-report-bytes` and `--batch-max-integration-bytes`.
+Every bound is explicit; the aggregate allocation must fund every component plus
+integration before execution, and a unit never exceeds the immutable parent policy
+(for Claude Code, 900 s / $10 reference per unit, zero extra spending). Allocation
+comparisons use exact decimal arithmetic; unknown usage, overshoot or an incomplete unit
+stops dispatch. Requests count wrapper invocations, not provider-internal API calls.
+
+`batch-run DIRECTORY` takes those bounds plus `--batch-authorization FILE`: a JSON object
+with a nonempty `name`, `preview_digest` (the canonical digest of the executable
+preview), `expires_at` (a finite UTC Unix timestamp), the exact `harness_commit` and
+`harness_files` mapping every Python module under this checkout's `scripts/agentic` to
+its SHA-256. Dispatch re-verifies the imported harness against that record before every
+unit. The file documents a separately granted finite authorization; writing it confers
+no authority by itself. Managed execution uses `task-review ISSUE --batch` with the same
+bounds and file, `--execute`, and `--batch-resume` where eligible; one batch is one
+managed round, and round continuation is authorized separately.
+
+Each unit packet copies the parent packet, adds `assignment.json` (its unit, required
+and context IDs, inspection suggestions, the frozen report ceiling), and materializes
+`navigation/` pages: a `START.txt` entry, paged required and related indexes and complete
+artifact window catalogs. Pages and windows hold at most 120 lines and 16,000 UTF-8 bytes
+(16,000,000 bytes per unit); lines above 16,000 bytes appear as JSON byte chunks. Those
+copies earn no source credit; the model must read the original required ranges. The unit
+prompt names the three mandatory probes, the assigned IDs and the frozen report limit.
+Materialization and validation recompute every binding from the originals before
+dispatch and again at aggregate assessment.
+
+`batch-state.json` (ledger schema 2) persists start, absolute deadline, ordered
+reservations with dispatch identity and allocation, and a durable stop reason. Before each
+unit the adapter re-verifies the reservation, the current head/base and contract, the
+remaining time and the harness; the effective timeout may shorten but the policy is never
+rewritten. The first incomplete unit, unknown usage, deadline, clock rollback, changed
+contract or interruption stops the batch; nothing is replayed. `batch-recover` is
+storage-only recovery of saved unit results. `batch-resume` dispatches only never-started
+units under the original unexpired authorization with every prior unit complete; it
+cannot clear a stop, reset the deadline, reclaim an uncertain slot or repeat a call.
+
+Publication posts one COMMENT per unit with its exact report and marker, then the
+aggregate bookkeeping (`review.md` and `coverage.json`, assessment schema 5) listing every
+unit's state and report hash. The aggregate is coordinator bookkeeping, not model output.
+Readiness requires every component and the integration unit complete: a unit cannot
+qualify its parent, partial publication never designates readiness, and
+`merge-preflight`, finish and the hosted gate all consume the aggregate. Hosted
+automation stays single-request Copilot. Batches are unit-tested in this template; a live
+batch is a separate verification recorded in [VERIFICATION.md](VERIFICATION.md).
 
 A repair packet accepts `--prior-review DIRECTORY` on local preparation or managed
 `task-review`. The prior packet/report/diagnostics must validate, belong to the same
@@ -53,11 +132,14 @@ inventory and require a fresh complete packet. Unsupported prior data fails expl
 
 ## Provider adapters and capability probe
 
-This harness ships one reviewer adapter, `copilot-session-events-v2`, for the pinned
-Copilot CLI. A profile whose reviewer backend is `claude-code` resolves and records its
-policy, but preparation refuses it with the blocker `claude_reviewer_adapter_not_installed`
-until the native Claude Code adapter ships; its evidence rules are documented with that
-adapter. Synthetic fixtures and static binary inspection never establish live capability.
+This harness ships two reviewer adapters: `copilot-session-events-v2` for the pinned
+Copilot CLI and `claude-stream-json-2.1.282-v6` (diagnostics schema 8) for the pinned
+native Claude Code binary. Both credit source only from literal tool results against the
+packet's own line inventory; the Claude adapter additionally enforces the stream's
+`system/init` controls and the diagnostic refusal canary described in
+[PROVIDERS.md](PROVIDERS.md). Synthetic fixtures and static binary inspection never
+establish live capability; the Claude reviewer must first qualify two activation
+diagnostics on this machine.
 
 The pinned Copilot CLI is 1.0.83, defined with its archive digest in
 `scripts/agentic/copilot_policy.py`. Installer, invocation and current assessment share
